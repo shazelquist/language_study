@@ -31,9 +31,9 @@ class syllabary:
         )
 
 
-class ancestry:
+class syll_relation:
     """
-    ancestry
+    syll_relation
 
     __init__(parent, child, frequency)
 
@@ -53,3 +53,9 @@ class ancestry:
     def probability(self):
         """ """
         return self.freq / self.syll_parent.freq
+
+    def __repr__(self):
+        """ """
+        return "<{} id={} parent_id={} child_id={} freq={}>".format(
+            type(self), self.id, self.syll_parent, self.syll_child, self.freq
+        )
