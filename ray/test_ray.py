@@ -86,7 +86,6 @@ class pseudo_db:
             if cond(item):
                 return item
 
-
 p_db = pseudo_db()
 
 
@@ -155,7 +154,7 @@ def printmatrix(chars, matrix):
             print(f_format.format(matrix[i]), end=ends)
     print("\n", end="")
 
-def matrix_and_count(tokens, label_c, label_r):
+def matrix_and_count(tokens, label_c, label_r, components=None, matrix=None):
     """
     matrix_and_count(tokens, label_c, label_r)
 
@@ -163,16 +162,19 @@ def matrix_and_count(tokens, label_c, label_r):
     label_c: label for compoenent storage
     label_r: label for relation storage
     """
-    components = list(set(tokens))
-    components.sort()
-    components.append("$")
-    components.append("^")
+    if not components:
+        components = list(set(tokens))
+        components.sort()
+        components.append("$")
+        components.append("^")
 
-    token_obj = [syllabary(c, tokens.count(c)) for c in components]
-    p_db.add_all(token_obj, label_c)
+    if not matrix:# add tokens to components, if not already done through implication
+        token_obj = [syllabary(c, tokens.count(c)) for c in components]
+        p_db.add_all(token_obj, label_c)
 
     ptext = ["^"] + tokens + ["$"]
-    matrix = [0] * (len(components) * (len(components) - 2))
+    if not matrix:
+        matrix = [0] * (len(components) * (len(components) - 2))
     # printmatrix(chars,matrix)
     for i in range(1, len(tokens) + 1):
         matrix[getindex(ptext[i - 1], ptext[i], components)] += 1
@@ -204,6 +206,7 @@ def main():
     # more-realistic test case: ALICE'S ADVENTURES IN WONDERLAND by Lewis Carroll
     # TODO: check copyright status for book version/data generated
     text = open("../alice.txt", "r", encoding="utf-8").read()
+    #text = open("../foxdog.txt", "r", encoding="utf-8").read()
     chars = list(set(text))
     chars.sort()
 
@@ -254,16 +257,33 @@ def main():
     #printmatrix(*matrix_and_count([c for c in text],'text_compare','relation_compare'))  # test for function
     #print("number of syllables", p_db.count('text_compare', lambda x: True))
     #print("\n".join([str(i) for i in p_db.query('relation_compare', lambda x: True)]))
-    
+
+    def make_components(tokens, label_c):
+        components = list(set(tokens))
+        components.sort()
+        components.append("$")
+        components.append("^")
+        token_obj = [syllabary(c, tokens.count(c)) for c in components]
+        p_db.add_all(token_obj, label_c)
+
+        return components
+
+    def make_matrix(components):
+        matrix = [0] * (len(components) * (len(components) - 2))
+        return matrix
 
     # now do the same thing for words
-    textwords = re.findall(r"[a-zA-Z]+", text)
-    #word_set = set(textwords)
-    #words = [syllabary(w, textwords.count(w)) for w in word_set]
-    #p_db.add_all(words, "words")
-    #p_db.count("words", lambda x: x.sylb.lower() == "the")
-    # print(words)
-    printmatrix(*matrix_and_count([tw for tw in textwords],'words','word_link'))
+    components = make_components(re.findall(r"[a-zA-Z]+", text), "words")
+    matrix = make_matrix(components)
+
+    for sentence in re.findall(r"[^.!?]+[.!?]", text):
+        print('sentence',sentence)
+        textwords = re.findall(r"[a-zA-Z]+", sentence)
+        matrix = matrix_and_count([tw for tw in textwords],'words','word_link', components, matrix)[1]
+        #printmatrix(components, newmatrix)
+        print("\n")
+        #matrix = [i+j for i,j in zip(newmatrix, matrix)]
+    printmatrix(components, matrix)
     print("number of words", p_db.count('words', lambda x: True))
     print("number of word relations", p_db.count('word_link', lambda x: True))
 

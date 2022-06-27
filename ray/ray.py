@@ -67,7 +67,6 @@ class syll_relation:
     def update_freq(self, value):
         """ """
         pass
-
     def probability(self):
         """ """
         self.probability = self.freq / self.syll_parent.freq
