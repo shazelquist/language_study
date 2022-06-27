@@ -43,7 +43,6 @@ class pseudo_db:
         adds object to collection
         """
         label = self.__obj_label__(obj, label)
-
         if label not in self.cont.keys():
             self.cont[label] = []
         self.cont[label].append(obj)
@@ -55,7 +54,6 @@ class pseudo_db:
         adds all objects in given iterable
         """
         label = self.__obj_label__(obj, label)
-
         for item in obj:
             self.add(item, label)
 
@@ -66,7 +64,6 @@ class pseudo_db:
         returns all sucessful conditions for obj type
         """
         label = self.__obj_label__(label, label)
-
         return [item for item in self.cont[label] if cond(item)]
 
     def count(self, label, cond):
@@ -76,7 +73,6 @@ class pseudo_db:
         returns number of sucessful conditions
         """
         label = self.__obj_label__(label, label)
-
         return sum([1 for item in self.cont[label] if cond(item)])
 
     def first(self, label, cond):
@@ -124,7 +120,13 @@ def getcolsum(xchr, matrix, chars):
     return the sum of a given x character's column
     """
     xpos = chars.index(xchr)
-    return sum([matrix[getindex(xchr, i, chars)] for i in chars[:-2]])
+    sumval = sum([matrix[getindex(xchr, i, chars)] for i in chars[:-2]])
+    if not sumval:
+        # basically, if this is the last token/character, there is no child so it's fine
+        #print('\nerror on x_pos {}\n{}'.format(xchr, matrix))
+        #print('\n'.join([str(j) for j in [matrix[getindex(xchr, i, chars)] for i in chars[:-2]]]))
+        return 1
+    return sumval
 
 
 def printmatrix(chars, matrix):
@@ -135,10 +137,10 @@ def printmatrix(chars, matrix):
     note:
         Formatting not good enough to directly port to csv
     """
-    print("\t".join(["N"] + chars))
+    ends = " "
+    print(ends.join(['"{}"'.format(i) for i in ["N"] + chars]))
     # print('{} '.format(chars[0]),end='')
-    f_format = '"{}"'  # '{:.1f}'
-    ends = "\t"
+    f_format = '"{}"'# '"{}"'  # '{:.1f}'
     colsums = [getcolsum(i, matrix, chars) for i in chars] + [1, 1]
     for i in range(0, len(matrix)):
         if i % len(chars) == 0:
@@ -147,26 +149,63 @@ def printmatrix(chars, matrix):
             )
         if i % len(chars) == len(chars) - 1 or i % len(chars) == len(chars) - 2:
             print(f_format.format(matrix[i]), end=ends)
-        elif colsums[i % 28]:
+        elif colsums[i % len(chars)]:
             print(f_format.format(matrix[i] / colsums[i % len(chars)]), end=ends)
         else:
             print(f_format.format(matrix[i]), end=ends)
     print("\n", end="")
 
+def matrix_and_count(tokens, label_c, label_r):
+    """
+    matrix_and_count(tokens, label_c, label_r)
+
+    tokens:  list of tokens
+    label_c: label for compoenent storage
+    label_r: label for relation storage
+    """
+    components = list(set(tokens))
+    components.sort()
+    components.append("$")
+    components.append("^")
+
+    token_obj = [syllabary(c, tokens.count(c)) for c in components]
+    p_db.add_all(token_obj, label_c)
+
+    ptext = ["^"] + tokens + ["$"]
+    matrix = [0] * (len(components) * (len(components) - 2))
+    # printmatrix(chars,matrix)
+    for i in range(1, len(tokens) + 1):
+        matrix[getindex(ptext[i - 1], ptext[i], components)] += 1
+        pass
+    matrix[getindex("$", tokens[-1], components)] += 1
+
+    relations = []
+    colsums = [getcolsum(i, matrix, components) for i in components] + [1, 1]
+    for i in range(0, len(matrix)):
+        if matrix[i]:
+            parent = p_db.first(label_c, lambda x: x.sylb == components[i % len(components)])
+            child = p_db.first(
+                label_c, lambda x: x.sylb == components[floor(i / len(components))]
+            )
+            relations.append(
+                syll_relation(
+                    parent.sylb, child.sylb, matrix[i] / colsums[i % len(components)]
+                )
+            )  # /colsums
+            child.freq /= colsums[i % len(components)]
+    p_db.add_all(relations,label_r)
+
+    return components, matrix
 
 def main():
     print("main in test_ray\navaliable: {}".format(dir()))
     # general test case
-    text = "the quick brown fox jumps over the lazy dog".replace(" ", "")
+    text = "the quick brown fox jumps over the lazy dog"#.replace(" ", "")
     # more-realistic test case: ALICE'S ADVENTURES IN WONDERLAND by Lewis Carroll
     # TODO: check copyright status for book version/data generated
     text = open("../alice.txt", "r", encoding="utf-8").read()
     chars = list(set(text))
     chars.sort()
-
-    p_db.add_all(list(range(0, 10)), "zero to ten")
-    print(p_db.cont)
-    input()
 
     # Insert start & terminating character (not very useful with one sample)
     print("$ in base set: {}".format("$" in chars))
@@ -211,14 +250,22 @@ def main():
     print("\n".join([str(i) for i in p_db.query(start_syl, lambda x: True)]))
     print("number of relations", p_db.count(relations[0], lambda x: True))
     print("\n".join([str(i) for i in p_db.query(relations[0], lambda x: True)]))
+    #printmatrix(chars, matrix)
+    #printmatrix(*matrix_and_count([c for c in text],'text_compare','relation_compare'))  # test for function
+    #print("number of syllables", p_db.count('text_compare', lambda x: True))
+    #print("\n".join([str(i) for i in p_db.query('relation_compare', lambda x: True)]))
+    
 
     # now do the same thing for words
     textwords = re.findall(r"[a-zA-Z]+", text)
-    word_set = set(textwords)
-    words = [syllabary(w, textwords.count(w)) for w in word_set]
-    p_db.add_all(words, "words")
-    p_db.count("words", lambda x: x.sylb.lower() == "the")
+    #word_set = set(textwords)
+    #words = [syllabary(w, textwords.count(w)) for w in word_set]
+    #p_db.add_all(words, "words")
+    #p_db.count("words", lambda x: x.sylb.lower() == "the")
     # print(words)
+    printmatrix(*matrix_and_count([tw for tw in textwords],'words','word_link'))
+    print("number of words", p_db.count('words', lambda x: True))
+    print("number of word relations", p_db.count('word_link', lambda x: True))
 
     # parsing words isn't enough, will need to parse out sentences as well.
     # Each sentence can be used as it's own "source" for a complete thought
