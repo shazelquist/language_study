@@ -14,38 +14,91 @@
 """
 # Shane_Hazelquist #Date: Monday, 6/20/2022
 # Imports:
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    Enum,
+    ForeignKey,
+    create_engine,
+    UniqueConstraint,
+    and_,
+)
+from sqlalchemy.orm import relationship, Session, backref
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+engine = None
+session = None
 
 
-class syllabary:
+def start_session(dburl="sqlite:///ray.db"):
+    """initial setup with base data"""
+    global engine
+    global session
+    print("creating engine")
+    engine = create_engine(dburl)
+    print("opening session")
+    session = Session(engine)
+
+
+start_session()
+
+stale_instance = True
+instance_sum = 0
+stale_following = True  # probably unneeded
+
+
+class instance(Base):
     """
     syllabary
 
     __init__(sylb, frequency=0)
     Maintains syllable information for calculation and reference
+
+    text
+    freq
+    prob
     """
 
-    def __init__(self, sylb, frequency=0):
+    __tablename__ = "instance"
+    id = Column(Integer, primary_key=True, unique=True)
+    text = Column(String, unique=True)
+    freq = Column(Integer)
+    #prob = Column(Float(unsigned=True))
+
+    def __init__(self, text, freq):
         """ """
-        self.id = id(self)
-        self.sylb = sylb
-        self.freq = frequency
+        global stale_instance
+        stale_instance = True
+        self.text = text
+        self.freq = freq
 
     def update_freq(self, value):
         """ """
-        pass
+        global stale_instance
+        stale_instance = True
+        self.freq = value
 
-    def probability():
+    def probability(self):
         """ """
-        return self.freq/sylabary.sum
+        global stale_instance, instance_sum
+        if stale_instance:
+            instance_sum = sum([i[0] for i in session.query(instance.freq).all()])
+            stale_instance = False
+
+        self.prob = self.freq / instance_sum
+        return self.prob
 
     def __repr__(self):
         """ """
-        return '<{} id={} sylb="{}" freq={}>'.format(
-            type(self), self.id, self.sylb, self.freq
+        return '<{} id={} text="{}" freq={}, prob={}>'.format(
+            type(self), self.id, self.text, self.freq, self.probability()
         )
 
 
-class syll_relation:
+class following(Base):
     """
     syll_relation
 
@@ -57,28 +110,44 @@ class syll_relation:
     Intended for use in word progression
     """
 
-    def __init__(self, parent, child, frequency):
+    __tablename__ = "following"
+    id = Column(Integer, primary_key=True, unique=True)
+    parent_id = Column(Integer, ForeignKey('instance.id'))
+    parent = relationship("instance", primaryjoin='instance.id==following.parent_id')
+    text_id = Column(Integer, ForeignKey('instance.id'))
+    text = relationship("instance", primaryjoin='instance.id==following.text_id')
+    freq = Column(Integer)
+    # prob=Column(Float) # probably unneeded
+
+    def __init__(self, parent, text, frequency):
         """ """
-        self.id = id(self)
-        self.syll_parent = parent
-        self.syll_child = child
+        self.parent_id = parent
+        self.text_id = text
         self.freq = frequency
 
     def update_freq(self, value):
         """ """
-        pass
+        global stale_following
+        stale_following = True
+        self.freq = value
+
     def probability(self):
         """ """
-        self.probability = self.freq / self.syll_parent.freq
-        return self.probability
+        self.prob= self.freq / sum([child.freq for child in session.query(following).filter(following.parent_id==self.parent_id).all()])
+        return self.prob
+
+    def total_probability(self):
+        """ """
+        return self.prob*self.parent.probability()
 
     def __repr__(self):
         """ """
         return "<{} id={} parent_id={} child_id={} freq={}>".format(
-            type(self), self.id, self.syll_parent, self.syll_child, self.freq
+            type(self), self.id, self.parent_id, self.text_id, self.freq
         )
 
-class higher_relation:
+
+class folowing_plus(following):
     """
     higher_relation
 
@@ -88,25 +157,20 @@ class higher_relation:
     Using parent_table as a reference, we can direct parent queries to higher order
     """
 
-    def __init__(self, parent_table, parent, child, frequency):
-        """ """
-        self.parent_table
-        self.id = id(self)
-        self.syll_parent = parent
-        self.syll_child = child
-        self.freq = frequency
+def main():
+    global session
+    setup=False
+    print('instances {}, following {}'.format(session.query(instance).count(),session.query(following).count()))
+    if setup:
+        print("creating engine")
+        engine = create_engine("sqlite:///ray.db")
+        print("dropping existing")
+        Base.metadata.drop_all(engine)
+        print("creating all schemea")
+        Base.metadata.create_all(engine)
+        print("opening session")
+        session = Session(engine)
 
-    def probability(self):
-        """ """
-        self.probability = self.freq / self.syll_parent.freq
-        return self.probability
 
-    def update_freq(self, value):
-        """ """
-        pass
-
-    def __repr__(self):
-        """ """
-        return "<{} id={} parent_id={} child_id={} freq={}>".format(
-            type(self), self.id, self.syll_parent, self.syll_child, self.freq
-        )
+if __name__=='__main__':
+    main()
