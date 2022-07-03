@@ -201,6 +201,8 @@ def matrix_and_count(tokens, label_c, label_r, components=None, matrix=None):
 
 def main():
     print("main in test_ray\navaliable: {}".format(dir()))
+    print('instances count {}'.format(session.query(instance).count()))
+    print('following count {}'.format(session.query(following).count()))
     # general test case
     text = "the quick brown fox jumps over the lazy dog"#.replace(" ", "")
     # more-realistic test case: ALICE'S ADVENTURES IN WONDERLAND by Lewis Carroll
@@ -209,30 +211,75 @@ def main():
     #text = open("../foxdog.txt", "r", encoding="utf-8").read()
     chars = list(set(text))
     chars.sort()
+    false_pos='etosdvmcw\''.split()
+    comp_def = r"[a-zA-Z]+"
+    word_orders = []
+    for i in re.findall(comp_def, text):
+        if i.lower() not in false_pos:
+            print(i)
+            word_orders.append(i.lower())
+    components = list(set(word_orders))
+    #components = list(set([i.lower() for i in re.findall(comp_def, text) if i not in false_pos]))
 
     # Insert start & terminating character (not very useful with one sample)
     print("$ in base set: {}".format("$" in chars))
     print("^ in base set: {}".format("^" in chars))
-    chars.append("$")
-    chars.append("^")
-
-    syllables = [syllabary(c, text.count(c)) for c in chars]
+    components.append("$")
+    components.append("^")
+    
+    print('items:',chars)
+    syllables = session.query(instance).all()
+    syllables = [instance(c, len(re.findall('[\W\s]{}[\W\s]'.format(c),text))) for c in components]
     start_syl = syllables[-1]
 
-    p_db.add_all(syllables)
+    session.add_all(syllables)
+    session.commit()
     # res = p_db.query(syllables[0],lambda slb : slb.sylb == 'a')
-    print(p_db.query(syllables[0], lambda slb: slb.sylb == "a"))
+    #print(p_db.query(syllables[0], lambda slb: slb.text == "a"))
     # print("\n".join([i.__repr__() for i in syllables]))
     ptext = "^" + text + "$"
-    matrix = [0] * (len(chars) * (len(chars) - 2))
+    #matrix = [0] * (len(chars) * (len(chars) - 2))
     # printmatrix(chars,matrix)
-    for i in range(1, len(text) + 1):
-        matrix[getindex(ptext[i - 1], ptext[i], chars)] += 1
-        pass
-    matrix[getindex("$", text[-1], chars)] += 1
+    #for i in range(1, len(text) + 1):
+    #    matrix[getindex(ptext[i - 1], ptext[i], chars)] += 1
+    #    pass
+    #matrix[getindex("$", text[-1], chars)] += 1
     # probability is count/sum of column
     # matrix=[float('{}{}'.format((i%26==0 or i%27==0)*str(matrix[i]),(i%26!=0 and i%27!=0)*str(matrix[i]/35))) for i in range(0,len(matrix))]
     # printmatrix(chars, matrix)
+
+    print("number of instance", session.query(instance).count())
+    print("number of following", session.query(following).count())
+    #
+    # todo: session.merge or in-mem lookup
+    print("\n".join([str(i) for i in session.query(instance).order_by(instance.freq).all()]))
+    
+
+    print(type(word_orders),len(word_orders))
+    #for i in word_orders:
+    #    input(i)
+    follows={}
+    for i in range(1,len(word_orders)):
+        print('looking at',i,word_orders[i-1],word_orders[i])
+        parent = session.query(instance).filter(instance.text==word_orders[i-1]).first().id
+        child = session.query(instance).filter(instance.text==word_orders[i]).first().id
+        key=tuple([parent,child])
+        #print(key)
+        if key in follows.keys():
+            #print("1",end=' ')
+            follows[key].update_freq(follows[key].freq+1)
+        else:
+            #print("0",end=' ')
+            obj=following(parent,child,1)
+            follows[key]= obj
+    pf=[]
+    for k in follows:
+        pf.append(follows[k])
+    print('Pushing following to db')
+    session.add_all(pf)
+    session.commit()
+    print("number of syllables", session.query(following).count())
+    return
 
     relations = []
     colsums = [getcolsum(i, matrix, chars) for i in chars] + [1, 1]
