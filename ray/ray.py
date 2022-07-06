@@ -14,6 +14,7 @@
 """
 # Shane_Hazelquist #Date: Monday, 6/20/2022
 # Imports:
+from os import environ
 from sqlalchemy import (
     Column,
     Integer,
@@ -28,16 +29,18 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, Session, backref
 from sqlalchemy.ext.declarative import declarative_base
 
+dburl=environ.get('DB_URI', "sqlite:///ray.db")
+
 Base = declarative_base()
 engine = None
 session = None
 
 
-def start_session(dburl="sqlite:///ray.db"):
+def start_session():
     """initial setup with base data"""
     global engine
     global session
-    print("creating engine")
+    print("creating engine for {}".format(dburl))
     engine = create_engine(dburl)
     print("opening session")
     session = Session(engine)
@@ -97,7 +100,6 @@ class instance(Base):
             type(self), self.id, self.text, self.freq, self.probability()
         )
 
-
 class following(Base):
     """
     syll_relation
@@ -146,6 +148,14 @@ class following(Base):
             type(self), self.id, self.parent_id, self.text_id, self.freq
         )
 
+class model_source():
+    """
+    A collection of locations or addresses from where information was collected
+    """
+    id=Column(Integer, primary_key=True, unique=True)
+    source = Column(String)
+    tag = Column(String)
+
 
 class folowing_plus(following):
     """
@@ -163,7 +173,7 @@ def main():
     print('instances {}, following {}'.format(session.query(instance).count(),session.query(following).count()))
     if setup:
         print("creating engine")
-        engine = create_engine("sqlite:///ray.db")
+        engine = create_engine(dburl)
         print("dropping existing")
         Base.metadata.drop_all(engine)
         print("creating all schemea")
