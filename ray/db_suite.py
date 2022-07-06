@@ -4,12 +4,15 @@
 from sys import argv
 from ray import *
 import db_suite as mainself
+from json import loads, load
 # Directive:
 # 
 
 def erase_db(param=None):
+    if input('Do you really want to delete & remake {}? y/n\t'.format(dburl))!='y':
+        return
     print("creating engine")
-    engine = create_engine("sqlite:///ray.db")
+    engine = create_engine(dburl)
     print("dropping existing")
     Base.metadata.drop_all(engine)
     print("creating all schemea")
@@ -17,7 +20,7 @@ def erase_db(param=None):
     print("opening session")
     session = Session(engine)
 
-def push_sentence(target, sentence_def param=None):
+def push_sentence(target, sentence_defi, param=None):
     
     for sentence in ['source_beg_token']+re.find_all(sentence_def, target)['source_end_token']:
         push_relation(target,param)
@@ -34,6 +37,15 @@ def push_relation(target, order=1, param=None):
 
 def push_characters(target, param=None):
     pass
+
+def test_data(*param):
+    if not param:
+        param = input('Please enter a query:')
+    for i in param:
+        results = session.query(instance).filter(instance.text.startswith(i)).order_by(instance.freq)
+        if results.count()<10 or input('{} results found starting with "{}", show all (y)?'.format(results.count(),i))=='y':
+            for term in results.all():
+                print(term.text,term.freq)
 
 def peek(param=None):
     global session
@@ -69,8 +81,23 @@ def guess_next(param=None):
 def echo(*param):
     print(param)
 
-def load_dictionary(param=None):
-    pass
+def load_dictionary(source='../temp/terms.json', param=None):
+    with open(source, 'r', encoding='utf-8') as jfile:
+        dic_terms = load(jfile)
+    existing = [inst.text for inst in session.query(instance).all()]
+    print('comparing new objects to existing')
+    new_terms = [instance(term, 0) for term in dic_terms if term not in existing]# load as obj
+    print('{} new terms to push'.format(len(new_terms)))
+    session.add_all(new_terms)
+    session.commit()
+
+def test_dictionary():
+    print('loading terms')
+    terms = loads(open('../temp/terms.json','r',encoding='utf-8').read())
+    print('comparing db against terms')
+    missing = [t.text for t in session.query(instance).all() if t.text not in terms]
+    print(missing)
+    print('{} terms missing'.format(len(missing)))
 
 def main():
     cm_param = argv[1:]
