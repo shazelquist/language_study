@@ -81,7 +81,7 @@ def guess_next(param=None):
 def echo(*param):
     print(param)
 
-def load_dictionary(source='../temp/terms.json', param=None):
+def load_dictionary(source=temp_path+'terms.json', param=None):
     with open(source, 'r', encoding='utf-8') as jfile:
         dic_terms = load(jfile)
     existing = [inst.text for inst in session.query(instance).all()]
@@ -93,7 +93,7 @@ def load_dictionary(source='../temp/terms.json', param=None):
 
 def test_dictionary():
     print('loading terms')
-    terms = loads(open('../temp/terms.json','r',encoding='utf-8').read())
+    terms = loads(open(temp_path+'terms.json','r',encoding='utf-8').read())
     print('comparing db against terms')
     missing = [t.text for t in session.query(instance).all() if t.text not in terms]
     print(missing)

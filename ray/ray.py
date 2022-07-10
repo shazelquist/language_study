@@ -30,6 +30,9 @@ from sqlalchemy.orm import relationship, Session, backref
 from sqlalchemy.ext.declarative import declarative_base
 
 dburl=environ.get('DB_URI', "sqlite:///ray.db")
+temp_path = '../temp/'# not used directly but by dependent modules
+if 'jp' in dburl:
+    temp_path = '../archive/temp/'# not used directly but by dependent modules
 
 Base = declarative_base()
 engine = None
