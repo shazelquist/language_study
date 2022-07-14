@@ -90,11 +90,12 @@ class instance(Base):
     def probability(self):
         """ """
         global stale_instance, instance_sum
+        self.prob = 0
         if stale_instance:
             instance_sum = sum([i[0] for i in session.query(instance.freq).all()])
             stale_instance = False
-
-        self.prob = self.freq / instance_sum
+        if instance_sum:
+            self.prob = self.freq / instance_sum
         return self.prob
 
     def __repr__(self):
@@ -160,7 +161,7 @@ class model_source():
     tag = Column(String)
 
 
-class folowing_plus(following):
+class following_plus(Base):
     """
     higher_relation
 
@@ -169,7 +170,57 @@ class folowing_plus(following):
     Given an ancester, keep track of likelyhood of following syllables
     Using parent_table as a reference, we can direct parent queries to higher order
     """
+    __tablename__="following_plus"
+    id=Column(Integer, primary_key=True, unique=True)
+    degree = Column(Integer, nullable=False)
+    parent_id = Column(Integer)
+    text_id = Column(Integer, ForeignKey('instance.id'))
+    text = relationship("instance", primaryjoin='instance.id==following_plus.text_id')
+    freq = Column(Integer)
 
+    @property
+    def parent(self):
+        """
+        Acts like foreign key relationship using the degree to determine whether
+        to query following as parent or following_plus for degrees higher than 1
+        """
+        if self.degree>1:# reference self table
+            return session.query(following_plus).filter(self.parent_id==following_plus.id).first()
+        else:
+            return session.query(following).filter(self.parent_id==following.id).first()
+
+
+    def __init__(self, parent, text, frequency, degree=1):
+        """ """
+        self.degree = degree
+        self.parent_id = parent
+        self.text_id = text
+        self.freq = frequency
+
+    def update_freq(self, value):
+        """ """
+        global stale_following
+        stale_following = True
+        self.freq = value
+
+    def probability(self):
+        """ """
+        self.prob= self.freq / sum([child.freq for child in session.query(following_plus).filter(and_(following_plus.degree==self.degree,following_plus.parent_id==self.parent_id)).all()])
+        return self.prob
+
+    def total_probability(self):
+        """ """
+        if not self.prob:
+            self.probability()
+        return self.prob*self.parent.probability()
+
+    def __repr__(self):
+        """ """
+        return "<{} id={} degree={} parent_id={} child_id={} freq={}>".format(
+            type(self), self.degree, self.id, self.parent_id, self.text_id, self.freq
+        )
+
+ 
 def main():
     global session
     setup=False
