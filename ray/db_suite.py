@@ -35,6 +35,48 @@ def push_relation(target, order=1, param=None):
     else:# push relation of given order
         pass
 
+def test_following_plus(param=None):
+    input("continue? note, this may mess with data in a current db")
+    sents=["the quick brown fox jumped over the lazy dog"]
+    for sent in sents:
+        word_order=sent.split(' ')
+        words=[instance(text,0) for text in set(word_order)]
+        session.add_all(words)
+        session.commit()
+        degree=0
+        follows={}
+        for w in words:
+            follows[tuple([w.text])]=w
+        print('starting plus parsing with no limit')
+        autoid=1
+        for i in range(1,len(word_order)+1):
+            j = i
+            print('index {}, j {}, degree {}'.format(i,j,degree))
+            print('\tAiming',word_order[:i+1])
+            while j>degree and i<len(word_order):
+                print('\tsplice',word_order[:1+j])
+                label=tuple(word_order[:1+j])
+                print('\tusing label: {} at deg: {}\n\t\t{}'.format(label,degree,[k for k in follows.keys()]))
+                if label in follows:
+                    print('\t\t\tfound label {}, inc'.format(label))
+                    follows[label].update_freq(follows[label].freq+1)
+                else:
+                    # add object:
+                    print('\t\t\tparent label {}'.format(label[:-1]))
+                    if j==0:# follows
+                        # parent, text, frequency
+                        follows[label]=following_plus(follows[label[:-1]].id,follows[tuple([label[-1]])].id,1)
+                    else:# plus
+                        follows[label]=following_plus(follows[label[:-1]].id,follows[tuple([label[-1]])].id,1,j)
+                    follows[label].id=autoid
+                    autoid+=1
+                j-=1
+            degree+=1
+    session.add_all([follows[k] for k in follows])
+    session.commit()
+    for item in session.query(following_plus).order_by(following_plus.degree).all():
+        print(item.text.text)
+
 def push_characters(target, param=None):
     pass
 
