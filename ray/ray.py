@@ -29,10 +29,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, Session, backref
 from sqlalchemy.ext.declarative import declarative_base
 
-dburl=environ.get('DB_URI', "sqlite:///ray.db")
-temp_path = '../temp/'# not used directly but by dependent modules
-if 'jp' in dburl:
-    temp_path = '../archive/temp/'# not used directly but by dependent modules
+dburl = environ.get("DB_URI", "sqlite:///ray.db")
+temp_path = "../temp/"  # not used directly but by dependent modules
+if "jp" in dburl:
+    temp_path = "../archive/temp/"  # not used directly but by dependent modules
 
 Base = declarative_base()
 engine = None
@@ -72,7 +72,7 @@ class instance(Base):
     id = Column(Integer, primary_key=True, unique=True)
     text = Column(String, unique=True)
     freq = Column(Integer)
-    #prob = Column(Float(unsigned=True))
+    # prob = Column(Float(unsigned=True))
 
     def __init__(self, text, freq):
         """ """
@@ -104,6 +104,7 @@ class instance(Base):
             type(self), self.id, self.text, self.freq, self.probability()
         )
 
+
 class following(Base):
     """
     syll_relation
@@ -118,10 +119,10 @@ class following(Base):
 
     __tablename__ = "following"
     id = Column(Integer, primary_key=True, unique=True)
-    parent_id = Column(Integer, ForeignKey('instance.id'))
-    parent = relationship("instance", primaryjoin='instance.id==following.parent_id')
-    text_id = Column(Integer, ForeignKey('instance.id'))
-    text = relationship("instance", primaryjoin='instance.id==following.text_id')
+    parent_id = Column(Integer, ForeignKey("instance.id"))
+    parent = relationship("instance", primaryjoin="instance.id==following.parent_id")
+    text_id = Column(Integer, ForeignKey("instance.id"))
+    text = relationship("instance", primaryjoin="instance.id==following.text_id")
     freq = Column(Integer)
     # prob=Column(Float) # probably unneeded
 
@@ -139,12 +140,19 @@ class following(Base):
 
     def probability(self):
         """ """
-        self.prob= self.freq / sum([child.freq for child in session.query(following).filter(following.parent_id==self.parent_id).all()])
+        self.prob = self.freq / sum(
+            [
+                child.freq
+                for child in session.query(following)
+                .filter(following.parent_id == self.parent_id)
+                .all()
+            ]
+        )
         return self.prob
 
     def total_probability(self):
         """ """
-        return self.prob*self.parent.probability()
+        return self.prob * self.parent.probability()
 
     def __repr__(self):
         """ """
@@ -152,11 +160,13 @@ class following(Base):
             type(self), self.id, self.parent_id, self.text_id, self.freq
         )
 
-class model_source():
+
+class model_source:
     """
     A collection of locations or addresses from where information was collected
     """
-    id=Column(Integer, primary_key=True, unique=True)
+
+    id = Column(Integer, primary_key=True, unique=True)
     source = Column(String)
     tag = Column(String)
 
@@ -170,12 +180,13 @@ class following_plus(Base):
     Given an ancester, keep track of likelyhood of following syllables
     Using parent_table as a reference, we can direct parent queries to higher order
     """
-    __tablename__="following_plus"
-    id=Column(Integer, primary_key=True, unique=True)
+
+    __tablename__ = "following_plus"
+    id = Column(Integer, primary_key=True, unique=True)
     degree = Column(Integer, nullable=False)
     parent_id = Column(Integer)
-    text_id = Column(Integer, ForeignKey('instance.id'))
-    text = relationship("instance", primaryjoin='instance.id==following_plus.text_id')
+    text_id = Column(Integer, ForeignKey("instance.id"))
+    text = relationship("instance", primaryjoin="instance.id==following_plus.text_id")
     freq = Column(Integer)
 
     @property
@@ -184,11 +195,14 @@ class following_plus(Base):
         Acts like foreign key relationship using the degree to determine whether
         to query following as parent or following_plus for degrees higher than 1
         """
-        if self.degree>1:# reference self table
-            return session.query(following_plus).filter(self.parent_id==following_plus.id).first()
+        if self.degree > 1:  # reference self table
+            return (
+                session.query(following_plus)
+                .filter(self.parent_id == following_plus.id)
+                .first()
+            )
         else:
-            return session.query(following).filter(self.parent_id==following.id).first()
-
+            return session.query(instance).filter(self.parent_id == instance.id).first()
 
     def __init__(self, parent, text, frequency, degree=1):
         """ """
@@ -205,26 +219,42 @@ class following_plus(Base):
 
     def probability(self):
         """ """
-        self.prob= self.freq / sum([child.freq for child in session.query(following_plus).filter(and_(following_plus.degree==self.degree,following_plus.parent_id==self.parent_id)).all()])
+        self.prob = self.freq / sum(
+            [
+                child.freq
+                for child in session.query(following_plus)
+                .filter(
+                    and_(
+                        following_plus.degree == self.degree,
+                        following_plus.parent_id == self.parent_id,
+                    )
+                )
+                .all()
+            ]
+        )
         return self.prob
 
     def total_probability(self):
         """ """
         if not self.prob:
             self.probability()
-        return self.prob*self.parent.probability()
+        return self.prob * self.parent.probability()
 
     def __repr__(self):
         """ """
         return "<{} id={} degree={} parent_id={} child_id={} freq={}>".format(
-            type(self), self.degree, self.id, self.parent_id, self.text_id, self.freq
+            type(self), self.id, self.degree, self.parent_id, self.text_id, self.freq
         )
 
- 
+
 def main():
     global session
-    setup=False
-    print('instances {}, following {}'.format(session.query(instance).count(),session.query(following).count()))
+    setup = False
+    print(
+        "instances {}, following {}".format(
+            session.query(instance).count(), session.query(following).count()
+        )
+    )
     if setup:
         print("creating engine")
         engine = create_engine(dburl)
@@ -236,5 +266,5 @@ def main():
         session = Session(engine)
 
 
-if __name__=='__main__':
+if __name__ == "__main__":
     main()
