@@ -79,13 +79,21 @@ def test_following_plus(param=None):
                     # add object:
                     if j == 0:  # follows
                         # parent, text, frequency
-                        follows[label] = following_plus(
-                            follows[label[:-1]].id, follows[tuple([label[-1]])].id, 1
+                        follows[
+                            label
+                        ] = following_plus(  # the -1 offset accounts for the lack of regular following
+                            follows[label[:-1]].id,
+                            follows[tuple([label[-1]])].id,
+                            1,
+                            i - 1,
                         )
                     else:  # plus
                         print("\tdegree", i)
                         follows[label] = following_plus(
-                            follows[label[:-1]].id, follows[tuple([label[-1]])].id, 1, i
+                            follows[label[:-1]].id,
+                            follows[tuple([label[-1]])].id,
+                            1,
+                            i - 1,
                         )
                     print("\tnew object", label, autoid)
                     follows[label].id = autoid
@@ -97,6 +105,7 @@ def test_following_plus(param=None):
 
 
 def following_plus_peek(param=None):
+    # modify to use function.func for backtracking
     if not param:
         param = input(
             "Please enter a word from list {}\n: ".format(
@@ -110,29 +119,28 @@ def following_plus_peek(param=None):
     ids = [
         session.query(instance).filter(instance.text == wrd).first().id for wrd in param
     ]
+    for i in session.query(following_plus).filter(following_plus.degree == 1).all():
+        print(i)
     print('head "{}" id:{}'.format(param[-1], ids[-1]))
+    # every match for the last word
     head = (
         session.query(following_plus)
-        .filter(following_plus.parent_id == ids[-1])
+        .filter(and_(following_plus.parent_id == ids[-1], following_plus.degree > 1))
         .order_by(following_plus.degree)
         .all()
     )
     print("given", param, "checking {} canidates".format(len(head)))
 
     matches = []
-    for h in head:
-        print(h)
+    for h in head[::-1]:
+        print(h.text.text)
         node = h
         score = 1
-        while (
-            node
-            and hasattr(node, "parent")
-            and score < len(ids)
-            and node.parent_id == ids[-score]
-        ):
-            print("\t", node)
+        while hasattr(node, "parent"):
+            print("\t", node.text.text, end=" ")
             score += 1
             node = node.parent
+        print(node.text)
         print(score)
 
 
