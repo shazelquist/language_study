@@ -189,6 +189,7 @@ class following_plus(Base):
     text = relationship("instance", primaryjoin="instance.id==following_plus.text_id")
     freq = Column(Integer)
 
+    # modifiy to use relationship with function.func if definition, may form cycles if incorrect
     @property
     def parent(self):
         """
@@ -203,6 +204,57 @@ class following_plus(Base):
             )
         else:
             return session.query(instance).filter(self.parent_id == instance.id).first()
+
+    @property
+    def child(self):
+        """
+        Acts like foreign key relationship using the degree to find children
+        """
+        return (
+            session.query(following_plus)
+            .filter(
+                and_(
+                    self.id == following_plus.parent_id,
+                    following_plus.degree == self.degree + 1,
+                )
+            )
+            .order_by(following_plus.freq)
+            .first()
+        )
+
+    @property
+    def children(self):
+        """
+        Acts like foreign key relationship using the degree to find children
+        """
+        return (
+            session.query(following_plus)
+            .filter(
+                and_(
+                    self.id == following_plus.parent_id,
+                    following_plus.degree == self.degree + 1,
+                )
+            )
+            .order_by(following_plus.freq)
+            .all()
+        )
+
+    def children_w(self, where):
+        """
+        Acts like foreign key relationship using the degree to find children
+        """
+        return (
+            session.query(following_plus)
+            .filter(
+                and_(
+                    self.id == following_plus.parent_id,
+                    following_plus.degree == self.degree + 1,
+                    where,
+                )
+            )
+            .order_by(following_plus.freq)
+            .all()
+        )
 
     def __init__(self, parent, text, frequency, degree=1):
         """ """

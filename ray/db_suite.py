@@ -123,25 +123,38 @@ def following_plus_peek(param=None):
         print(i)
     print('head "{}" id:{}'.format(param[-1], ids[-1]))
     # every match for the last word
+    # backward matching falls into problems with parent ID
+    # Lookup wants forward relation too
     head = (
         session.query(following_plus)
-        .filter(and_(following_plus.parent_id == ids[-1], following_plus.degree > 1))
-        .order_by(following_plus.degree)
+        .filter(following_plus.text_id == ids[0])
+        .order_by(following_plus.degree.desc())
         .all()
     )
     print("given", param, "checking {} canidates".format(len(head)))
 
-    matches = []
-    for h in head[::-1]:
-        print(h.text.text)
-        node = h
-        score = 1
-        while hasattr(node, "parent"):
-            print("\t", node.text.text, end=" ")
-            score += 1
-            node = node.parent
-        print(node.text)
-        print(score)
+    # matches = []
+    # for h in head[::-1]:
+    #    print(h.text.text)
+    #    node = h
+    #    score = 1
+    #    lis = []
+    #    while hasattr(node, "parent"):
+    #        lis.append(node.text.text)
+    #        node = node.parent
+    #    lis.append(node.text)
+    #    print(' '.join(lis[::-1]))
+    # this setup is good, now we just reverse the proccess for the best match,
+    for h in head:
+        print(h.text.text, h.degree, ":")
+        if len(ids) > 1:
+            print("\tGreater match")
+            for c in h.children:
+                if c.text_id == ids[1]:
+                    print("\t", c.text.text)
+        else:
+            for c in h.children:
+                print("\t", c.text.text)
 
 
 def push_characters(target, param=None):
