@@ -49,6 +49,11 @@ def test_following_plus(param=None):
     sents = [
         "the quick brown fox jumped over the lazy dog",
         "the quick red fox jumped over the stinky dog",
+        "the ragged fox jumped over the dog",
+        "the fox attacked the old dog",
+        "a fox attacked an old dog",
+        "the old dog could not react to the quick fox",
+        "the brown dog could not react to the lazy fox",
     ]
     follows = {}
     autoid = 1
@@ -79,6 +84,7 @@ def test_following_plus(param=None):
                     # add object:
                     if j == 0:  # follows
                         # parent, text, frequency
+                        print("\t\tdegree -", i, len(label[:-1]))
                         follows[
                             label
                         ] = following_plus(  # the -1 offset accounts for the lack of regular following
@@ -88,7 +94,7 @@ def test_following_plus(param=None):
                             i - 1,
                         )
                     else:  # plus
-                        print("\tdegree", i)
+                        print("\t\tdegree +", i, len(label[:-1]))
                         follows[label] = following_plus(
                             follows[label[:-1]].id,
                             follows[tuple([label[-1]])].id,
@@ -117,44 +123,59 @@ def following_plus_peek(param=None):
     else:
         param = [param]
     ids = [
-        session.query(instance).filter(instance.text == wrd).first().id for wrd in param
+        session.query(instance).filter(instance.text == wrd.lower()).first().id
+        for wrd in param
+        if wrd
     ]
-    for i in session.query(following_plus).filter(following_plus.degree == 1).all():
-        print(i)
-    print('head "{}" id:{}'.format(param[-1], ids[-1]))
     # every match for the last word
     # backward matching falls into problems with parent ID
     # Lookup wants forward relation too
-    head = (
-        session.query(following_plus)
-        .filter(following_plus.text_id == ids[0])
-        .order_by(following_plus.degree.desc())
-        .all()
-    )
+    if len(ids) == 1:
+        head = (
+            session.query(following_plus)
+            .filter(
+                and_(following_plus.parent_id == ids[-1], following_plus.degree == 1)
+            )
+            .order_by(following_plus.degree.desc())
+            .all()
+        )
+    elif len(ids) > 1:
+        head = (
+            session.query(following_plus)
+            .filter(
+                and_(
+                    following_plus.this_id == ids[-1], following_plus.degree < len(ids)
+                )
+            )
+            .order_by(following_plus.degree.desc())
+            .all()
+        )
+    else:
+        head = []
     print("given", param, "checking {} canidates".format(len(head)))
-
-    # matches = []
-    # for h in head[::-1]:
-    #    print(h.text.text)
-    #    node = h
-    #    score = 1
-    #    lis = []
-    #    while hasattr(node, "parent"):
-    #        lis.append(node.text.text)
-    #        node = node.parent
-    #    lis.append(node.text)
-    #    print(' '.join(lis[::-1]))
-    # this setup is good, now we just reverse the proccess for the best match,
+    best = []
     for h in head:
-        print(h.text.text, h.degree, ":")
-        if len(ids) > 1:
-            print("\tGreater match")
-            for c in h.children:
-                if c.text_id == ids[1]:
-                    print("\t", c.text.text)
-        else:
-            for c in h.children:
-                print("\t", c.text.text)
+        node = h.parent
+        best.append(len(ids) - 1)
+        for i in range(len(ids) - 1, 0, -1):  # reverse iterate from second to last
+            id_i = ids[i]
+            if not hasattr(node, "parent"):
+                if node.id == id_i:
+                    best[-1] += 1
+                break
+            if hasattr(node, "parent") and (
+                not (hasattr(node.parent, "parent") and node.parent_id == id_i)
+                or node.parent.this_id == id_i
+            ):
+                best[-1] += 1
+                node = node.parent
+    for h, b in zip(head, best):
+        print(
+            b,
+            h.path(),
+            h.probability,
+            [(c.text, c.probability) for c in h.children if len(ids) > 1],
+        )
 
 
 def push_characters(target, param=None):
@@ -192,7 +213,7 @@ def peek(param=None):
             session.query(following).filter(following.freq > 1).count()
         )
     )
-    # print('following plus {}'.format(session.query(following_plus).count()))
+    print("following plus {}".format(session.query(following_plus).count()))
 
 
 def dump_instance(param=None):
@@ -225,7 +246,7 @@ def guess_next(param=None):
     if not options:
         return
     for child in options:
-        print(child.text.text, child.probability())
+        print(child.text.text, child.probability)
 
 
 def echo(*param):
