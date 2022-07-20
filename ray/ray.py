@@ -88,6 +88,7 @@ class instance(Base):
         stale_instance = True
         self.freq = value
 
+    @property
     def probability(self):
         """ """
         global stale_instance, instance_sum
@@ -98,6 +99,9 @@ class instance(Base):
         if instance_sum:
             self.prob = self.freq / instance_sum
         return self.prob
+
+    def total_probability(self):
+        return self.probability
 
     def __repr__(self):
         """ """
@@ -312,9 +316,9 @@ class following_plus(Base):
 
     def total_probability(self):
         """ """
-        if not self.prob:
+        if not hasattr(self, "prob"):
             self.probability
-        return self.prob * self.parent.probability
+        return self.prob * self.parent.total_probability()
 
     def __repr__(self):
         """ """
