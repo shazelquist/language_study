@@ -25,6 +25,7 @@ from sqlalchemy import (
     create_engine,
     UniqueConstraint,
     and_,
+    inspect,
 )
 from sqlalchemy.orm import relationship, Session, backref
 from sqlalchemy.ext.declarative import declarative_base
@@ -101,7 +102,7 @@ class instance(Base):
     def __repr__(self):
         """ """
         return '<{} id={} text="{}" freq={}, prob={}>'.format(
-            type(self), self.id, self.text, self.freq, self.probability()
+            type(self), self.id, self.text, self.freq, self.probability
         )
 
 
@@ -138,6 +139,7 @@ class following(Base):
         stale_following = True
         self.freq = value
 
+    @property
     def probability(self):
         """ """
         self.prob = self.freq / sum(
@@ -152,7 +154,7 @@ class following(Base):
 
     def total_probability(self):
         """ """
-        return self.prob * self.parent.probability()
+        return self.prob * self.parent.probability
 
     def __repr__(self):
         """ """
@@ -185,26 +187,40 @@ class following_plus(Base):
     id = Column(Integer, primary_key=True, unique=True)
     degree = Column(Integer, nullable=False)
     parent_id = Column(Integer)
-    text_id = Column(Integer, ForeignKey("instance.id"))
-    text = relationship("instance", primaryjoin="instance.id==following_plus.text_id")
+    # parent_text = relationship(
+    #    "instance.text",
+    #    secondary="following_plus",
+    #    primaryjoin="instance.id==following_plus.parent_id AND following_plus.degree==1",
+    #    secondaryjoin="following_plus.id==following_plus.parent_id AND following_plus.degree!=1",
+    # )
+    this_id = Column(Integer, ForeignKey("instance.id"))
+    this = relationship("instance", primaryjoin="instance.id==following_plus.this_id")
+
     freq = Column(Integer)
 
-    # modifiy to use relationship with function.func if definition, may form cycles if incorrect
+    @property
+    def text(self):
+        """ """
+        return self.this.text
+
     @property
     def parent(self):
-        """
-        Acts like foreign key relationship using the degree to determine whether
-        to query following as parent or following_plus for degrees higher than 1
-        """
-        if self.degree > 1:  # reference self table
+        """ """
+        if self.degree == 1:
+            return session.query(instance).filter(instance.id == self.parent_id).first()
+        elif self.degree:
             return (
                 session.query(following_plus)
-                .filter(self.parent_id == following_plus.id)
+                .filter(
+                    and_(
+                        following_plus.id == self.parent_id,
+                        following_plus.degree == self.degree - 1,
+                    )
+                )
                 .first()
             )
-        else:
-            return session.query(instance).filter(self.parent_id == instance.id).first()
 
+    # modifiy to use relationship with function.func if definition, may form cycles if incorrect
     @property
     def child(self):
         """
@@ -256,19 +272,27 @@ class following_plus(Base):
             .all()
         )
 
-    def __init__(self, parent, text, frequency, degree=1):
+    def __init__(self, parent, this, frequency, degree=1):
         """ """
         self.degree = degree
         self.parent_id = parent
-        self.text_id = text
+        self.this_id = this
         self.freq = frequency
+
+    def path(self):
+        path = [self.text]
+        node = self.parent
+        while hasattr(node, "degree"):
+            path.insert(0, node.text)
+            node = node.parent
+        path.insert(0, node.text)
+        return tuple(path)
 
     def update_freq(self, value):
         """ """
-        global stale_following
-        stale_following = True
         self.freq = value
 
+    @property
     def probability(self):
         """ """
         self.prob = self.freq / sum(
@@ -289,13 +313,13 @@ class following_plus(Base):
     def total_probability(self):
         """ """
         if not self.prob:
-            self.probability()
-        return self.prob * self.parent.probability()
+            self.probability
+        return self.prob * self.parent.probability
 
     def __repr__(self):
         """ """
         return "<{} id={} degree={} parent_id={} child_id={} freq={}>".format(
-            type(self), self.id, self.degree, self.parent_id, self.text_id, self.freq
+            type(self), self.id, self.degree, self.parent_id, self.this_id, self.freq
         )
 
 
