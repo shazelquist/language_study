@@ -152,28 +152,41 @@ def following_plus_peek(param=None):
         )
     else:
         head = []
-    print("given", param, "checking {} canidates".format(len(head)))
+    print("given", param, "checking {} canidates".format(len(head)), ids)
     best = []
-    for h in head:
-        node = h.parent
-        best.append(len(ids) - 1)
-        for i in range(len(ids) - 1, 0, -1):  # reverse iterate from second to last
-            id_i = ids[i]
-            if not hasattr(node, "parent"):
-                if node.id == id_i:
-                    best[-1] += 1
-                break
-            if hasattr(node, "parent") and (
-                not (hasattr(node.parent, "parent") and node.parent_id == id_i)
-                or node.parent.this_id == id_i
-            ):
-                best[-1] += 1
+    rm = []
+    validated = []
+    if len(param) > 1:
+        for h in head:
+            node = h
+            best.append(len(ids) - 1)
+            for i in range(len(ids) - 1, -1, -1):  # reverse iterate from second to last
+                id_i = ids[i]
+                print(param[i], "against", node.text, i)
+                if not hasattr(node, "parent"):  # end of node
+                    if node.id == id_i:
+                        print("\tpass")
+                        validated.append(h)
+                        break
+                    print("\texiting, failed")
+                    rm.append(h)
+                    break
+                elif hasattr(node, "parent") and node.this_id == id_i:
+                    # best[-1] += 1
+                    pass  # do nothing and continue
+                else:  # this_id did not match
+                    print("\tbase did not match", node.this_id, id_i)
+                    rm.append(h)
+                    break
+                    # del best[-1]
                 node = node.parent
-    for h, b in zip(head, best):
+            if validated:
+                break
+        head = validated
+    for h in head:
         print(
-            b,
             h.path(),
-            h.probability,
+            "prob {}".format(h.probability),
             [(c.text, c.probability) for c in h.children if len(ids) > 1],
         )
 
