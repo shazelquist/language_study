@@ -59,14 +59,21 @@ stale_following = True  # probably unneeded
 
 class instance(Base):
     """
-    syllabary
+    instance:
+    __init__(self, text, freq)
 
-    __init__(sylb, frequency=0)
-    Maintains syllable information for calculation and reference
+    Maintains text information for calculation and reference
 
-    text
-    freq
-    prob
+    text    Str    characters, syllables, words
+    freq    Int    Number of occurances
+
+    Method properties:
+    probability frequency/sum(all instance frequencies)
+        Maintained through use of global stale_instance and instance_sum to limit queries for calculation
+    total_probability   returns probability as this is already global scope
+
+    Methods:
+    update_freq
     """
 
     __tablename__ = "instance"
@@ -76,21 +83,33 @@ class instance(Base):
     # prob = Column(Float(unsigned=True))
 
     def __init__(self, text, freq):
-        """ """
+        """
+        __init__(self,text,freq)
+
+        Creates new object and sets stale_instance
+        """
         global stale_instance
         stale_instance = True
         self.text = text
         self.freq = freq
 
     def update_freq(self, value):
-        """ """
+        """
+        update_freq(self, value)
+
+        Updates frequency and sets stale_instance to signal recalculation of total sum.
+        """
         global stale_instance
         stale_instance = True
         self.freq = value
 
     @property
     def probability(self):
-        """ """
+        """
+        probability
+
+        frequency/sum(session.query(instance.freq).all())
+        """
         global stale_instance, instance_sum
         self.prob = 0
         if stale_instance:
@@ -101,10 +120,19 @@ class instance(Base):
         return self.prob
 
     def total_probability(self):
+        """
+        total_probability(self)
+
+        returns self.probability as a compatibility between other objects
+        """
         return self.probability
 
     def __repr__(self):
-        """ """
+        """
+        __repr__(self)
+
+        format = '<{type} id={} text="{}" freq={}, prob={}>'
+        """
         return '<{} id={} text="{}" freq={}, prob={}>'.format(
             type(self), self.id, self.text, self.freq, self.probability
         )
@@ -112,7 +140,7 @@ class instance(Base):
 
 class following(Base):
     """
-    syll_relation
+    following
 
     __init__(parent, child, frequency)
 
@@ -167,14 +195,117 @@ class following(Base):
         )
 
 
-class model_source:
+class tag(Base):
     """
-    A collection of locations or addresses from where information was collected
+    tag
+    __init__(self, tagname)
+
+    A generic tag class for adding descriptive strings to objects
+
+    id      Int     Identifier
+    text    Str     Descriptor
     """
 
+    __tablename__ = "tag"
     id = Column(Integer, primary_key=True, unique=True)
-    source = Column(String)
-    tag = Column(String)
+    text = Column(String, unique=True)
+
+    def __init__(self, tagname):
+        """
+        __init__(self,tagname)
+        """
+        self.text = tagname
+
+    def __repr__(self):
+        """
+        __repr__(self)
+
+        format = '<{text}>'
+        """
+        return "<{}>".format(self.text)
+
+
+class model_source_tags(Base):
+    """
+    model_source_tags
+    __init__(self, ml_id, tag_id)
+
+    id      Int     Garbage Identifier
+    ml_id   Int     Foreign Key to model_source
+    tag_id  Int     Foreign Key to tag
+    """
+
+    __tablename__ = "model_source_tags"
+    id = Column(Integer, primary_key=True, unique=True)
+    ml_id = Column(Integer, ForeignKey("model_source.id"))
+    tag_id = Column(Integer, ForeignKey("tag.id"))
+
+    def __init__(self, ml_id, tag_id):
+        """
+        __init__(self, ml_id, tag_id):
+        """
+        self.ml_id = ml_id
+        self.tag_id = tag_id
+
+    def __repr__(self):
+        """
+        __repr__(self)
+
+        format = '<{id}: {ml_id}-{tag_id}>'
+        """
+        return "<{}: {}-{}>".format(self.id, self.ml_id, self.tag_id)
+
+
+class model_source(Base):
+    """
+    model_source
+    __init__(self, source, specific=None)
+
+    A collection of locations or addresses from where information was collected
+    id          Int     Indentifier
+    source      Str     Base source
+    specific    Str     Optional more specific source information
+        UniqueConstraint(source & specific)
+
+    tags    tag     relationship based on id
+    """
+
+    __tablename__ = "model_source"
+    id = Column(Integer, primary_key=True, unique=True)
+    source = Column(String)  # url, filename, or title
+    specific = Column(String, nullable=True)  # url, filename, or title, optional
+    UniqueConstraint(source, specific)
+    tags = relationship(
+        "tag",
+        secondary="model_source_tags",
+        uselist=True,
+    )
+
+    def __init__(self, source, specific=None):
+        """ """
+        self.source = source
+        self.specific = specific
+
+    def __repr__(self):
+        return '<id:{} source:"{}":"{}" {}>'.format(
+            self.id, self.source, self.specific, self.tags
+        )
+
+    def add_tag(self, text):
+        """ """
+        if not self.id:
+            print("Please insert into the database before adding tags")
+            exit(1)
+        tag_id = session.query(tag).filter(tag.text == text).first().id
+        session.add(model_source_tags(ml_id=self.id, tag_id=tag_id))
+        return session
+
+    def add_tags(self, texts):
+        """ """
+        sess = None
+        for text in texts:
+            sess = self.add_tag(text)
+        return sess
 
 
 class following_plus(Base):
@@ -185,31 +316,53 @@ class following_plus(Base):
 
     Given an ancester, keep track of likelyhood of following syllables
     Using parent_table as a reference, we can direct parent queries to higher order
+
+    Properties:
+    id          Int         Identifier
+    degree      Int         Number of parents
+    parent_id   Int         Parent Id, either same type or instance
+    freq        Int         Running Count
+    this_id     Int         Instance Id, for current relation
+    this        Relation    instance relation
+
+    Property Methods:
+    text        Text relatino from this_id
+    parent      Parent object, handled from different types
+    child       Child object if exists from the highest freq
+    children    Child objects ordered by freq
+    probability freq/sum(mutual options)
+
+    Methods:
+    children_w          Child objects with a where clause
+    total_probability   Probability*total_probability of parents
+    path                Generates word tuple of instance text order
+    update_freq         Update the probability
     """
 
     __tablename__ = "following_plus"
     id = Column(Integer, primary_key=True, unique=True)
     degree = Column(Integer, nullable=False)
     parent_id = Column(Integer)
-    # parent_text = relationship(
-    #    "instance.text",
-    #    secondary="following_plus",
-    #    primaryjoin="instance.id==following_plus.parent_id AND following_plus.degree==1",
-    #    secondaryjoin="following_plus.id==following_plus.parent_id AND following_plus.degree!=1",
-    # )
+    freq = Column(Integer)
     this_id = Column(Integer, ForeignKey("instance.id"))
     this = relationship("instance", primaryjoin="instance.id==following_plus.this_id")
 
-    freq = Column(Integer)
-
     @property
     def text(self):
-        """ """
+        """
+        Returns the text value of the current "this" relation
+        """
         return self.this.text
 
     @property
     def parent(self):
-        """ """
+        """
+        Returns parent object
+        If degree == 1:
+            type instance
+        elif degree:
+            same type, (requires a nonzero degree)
+        """
         if self.degree == 1:
             return session.query(instance).filter(instance.id == self.parent_id).first()
         elif self.degree:
@@ -277,13 +430,20 @@ class following_plus(Base):
         )
 
     def __init__(self, parent, this, frequency, degree=1):
-        """ """
+        """
+        __init__(self, parent, this, frequency, degree=1)
+
+        parent:int, this:int, freq:int, degree:int
+        """
         self.degree = degree
         self.parent_id = parent
         self.this_id = this
         self.freq = frequency
 
     def path(self):
+        """
+        Generates a tuple of given text from ancester to this
+        """
         path = [self.text]
         node = self.parent
         while hasattr(node, "degree"):
@@ -293,12 +453,18 @@ class following_plus(Base):
         return tuple(path)
 
     def update_freq(self, value):
-        """ """
+        """
+        update_freq(self, value)
+
+        Mutator for the freq property
+        """
         self.freq = value
 
     @property
     def probability(self):
-        """ """
+        """
+        Returns the probability of this object given the parent
+        """
         self.prob = self.freq / sum(
             [
                 child.freq
@@ -315,13 +481,17 @@ class following_plus(Base):
         return self.prob
 
     def total_probability(self):
-        """ """
+        """
+        Returns probability of this object * probability of ancestry
+        """
         if not hasattr(self, "prob"):
             self.probability
         return self.prob * self.parent.total_probability()
 
     def __repr__(self):
-        """ """
+        """
+        format = '<{type} id={} degree={} parent_id={} child_id={} freq={}>'
+        """
         return "<{} id={} degree={} parent_id={} child_id={} freq={}>".format(
             type(self), self.id, self.degree, self.parent_id, self.this_id, self.freq
         )
