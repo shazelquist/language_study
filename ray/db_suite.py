@@ -195,6 +195,35 @@ def push_characters(target, param=None):
     pass
 
 
+def sources(*param):
+    opts = []
+    if param:
+        opts = param
+    if "maketag" in opts:
+        session.add(tag("debug"))
+        session.add(tag("dictionary"))
+        session.add(tag("text"))
+        session.add(tag("web"))
+        session.add(tag("book"))
+        session.commit()
+    if "showtag" in opts:
+        print(list(session.query(tag).all()))
+    if "showass" in param:
+        for association in session.query(model_source_tags):
+            print(association)
+    if "makesource" in opts:
+        db_alice = model_source("debug_alice.txt", "fake_textfile")
+        session.add(db_alice)
+        session.commit()
+        db_alice.add_tags(["debug", "text"]).commit()
+    if "showsource" in opts:
+        print((session.query(model_source).all()))
+
+
+def debug(param=None):
+    pass
+
+
 def test_data(*param):
     if not param:
         param = input("Please enter a query:")
@@ -293,7 +322,7 @@ def main():
     print("starting suite, param:", cm_param)
     actions = [i[1:] for i in cm_param if (i and i[0] == "-")]
     print("starting actions", actions)
-    print("avaliable actions:", dir(mainself))
+    print("avaliable actions:", [i for i in dir(mainself) if "__" not in i])
     while actions:
         print(actions)
         action = actions[0]
