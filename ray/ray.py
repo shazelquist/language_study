@@ -11,6 +11,11 @@
 #   May be better if developed in a oop linked node format.
 #   Extending previous order objects will maintain some consistancy
 #   Updates to calculations need proper flow because of child dependencies
+#
+# Space requirements of following plus:
+#   Where 'n' is the number of instances in a sentence
+#   instance: set(n)
+#   following_plus: sum((range(i,n-1)), or 2n?
 """
 # Shane_Hazelquist #Date: Monday, 6/20/2022
 # Imports:
@@ -118,6 +123,12 @@ class instance(Base):
         if instance_sum:
             self.prob = self.freq / instance_sum
         return self.prob
+
+    def path(self):
+        """
+        generates and returns a tuple label of the given text
+        """
+        return tuple([self.text])
 
     def total_probability(self):
         """
@@ -312,7 +323,7 @@ class following_plus(Base):
     """
     higher_relation
 
-    __init__(parent_table, parent, child, frequency)
+    __init__(parent_table, parent, child, frequency, degree)
 
     Given an ancester, keep track of likelyhood of following syllables
     Using parent_table as a reference, we can direct parent queries to higher order
@@ -337,6 +348,7 @@ class following_plus(Base):
     total_probability   Probability*total_probability of parents
     path                Generates word tuple of instance text order
     update_freq         Update the probability
+    add_freq            Update the probability
     """
 
     __tablename__ = "following_plus"
@@ -459,6 +471,14 @@ class following_plus(Base):
         Mutator for the freq property
         """
         self.freq = value
+
+    def add_freq(self, value=1):
+        """
+        update_freq(self, value=1)
+
+        Mutator for the freq property, adds value with default of 1
+        """
+        self.freq += value
 
     @property
     def probability(self):
