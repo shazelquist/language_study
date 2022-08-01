@@ -79,6 +79,7 @@ class instance(Base):
 
     Methods:
     update_freq
+    add_freq
     """
 
     __tablename__ = "instance"
@@ -107,6 +108,15 @@ class instance(Base):
         global stale_instance
         stale_instance = True
         self.freq = value
+
+    def add_freq(self, value=1):
+        """
+        add_freq(self, value)
+
+        Updates frequency and instance_sum by adding value
+        """
+        global instance_sum
+        self.freq += value
 
     @property
     def probability(self):
@@ -461,7 +471,7 @@ class following_plus(Base):
         while hasattr(node, "degree"):
             path.insert(0, node.text)
             node = node.parent
-        path.insert(0, node.text)
+        path.insert(0, node.text)  # Notice, if errors occur here then !parent
         return tuple(path)
 
     def update_freq(self, value):
