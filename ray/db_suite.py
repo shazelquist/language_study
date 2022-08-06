@@ -5,8 +5,9 @@ from sys import argv
 from ray import *
 import db_suite as mainself
 from json import loads, load, dump
-from sqlalchemy import update
+from sqlalchemy import update, or_, tuple_
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql.expression import func
 from collections import Counter  # todo
 
 # Directive:
@@ -26,37 +27,16 @@ def erase_db(param=None):
     session = Session(engine)
 
 
-def push_sentence(target, sentence_defi, param=None):
-
-    for sentence in ["source_beg_token"] + re.find_all(sentence_def, target)[
-        "source_end_token"
-    ]:
-        push_relation(target, param)
-
-
-def push_relation(target, order=1, param=None):
-
-    if order > 1:
-        push_relation(target, order - 1, param)
-    if order == 1:  # push word instances
-        for word in ["sentence_beg_token"] + re.find_all(sentence_def, target)[
-            "sentence_end_token"
-        ]:
-            push_characters(word, param)
-    else:  # push relation of given order
-        pass
-
-
-def delay_ops(dset, dqueue):
-    dq = []
-    print(dset)
-    for k in dqueue:
-        dq.append([k, dqueue[k]])
+def serialize_delayset(dset):
     with open(temp_path + "delayed_set.json", "w", encoding="utf-8") as wordset:
         dump(list(dset), wordset)
-    with open(temp_path + "delayed_ops.json", "w", encoding="utf-8") as delay:
-        # print(dq)
-        dump(dq, delay)
+
+
+def serialize_delayqueue(dqueue):
+    with open(temp_path + "delayed_ops.json", "w", encoding="utf-8") as wordset:
+        for k in dequeue:
+            dqueue[k] = dict(dqueue[k])
+        dump(dqueue, wordset)
 
 
 def verify_words(param=None):
@@ -74,22 +54,26 @@ def verify_words(param=None):
     session.commit()
 
 
-def update_instance(sentences, follows):
+def update_instance(sentences, follows, add=True):
     words = Counter()
     for s in sentences:
         for w in s:
-            print("ui:", w)
             words[w] += 1
     delayset = set()
+    ui = {}
     for w in words:
         if (w,) in follows:
             follows[(w,)].add_freq(words[w])
+            ui[(w,)] = follows[(w,)]
+            if add:
+                session.add(follows[(w,)])
         else:
             delayset.update([w])
-    return delayset
+    print("updated instance of {} words".format(len(words)))
+    return delayset, ui
 
 
-def test_following_plus(param=None, validated_delay=[], maxdeg=0):
+def test_following_plus(param=None, validated_delay={}, maxdeg=0):
     """
     Test following plus by loading sentence information
 
@@ -120,9 +104,14 @@ def test_following_plus(param=None, validated_delay=[], maxdeg=0):
         "the old dog could not react to the quick fox",
         "the brown dog could not react to the lazy fox",
     ]
-    # sentences = open('../clean_alice.txt','r',encoding='utf-8').read().split('\n')
+    title = "Pride_and_Prejudice"
+    title = "alice"
+    # push_order 1112195, DB_miss_create_new 1030494, delay_queue 549379, degree removal 7139, DB_hit 158
+    # sentences = open('../books/clean_'+title+'.txt','r',encoding='utf-8').read().split('\n')
     sentences = [sent.split(" ") for sent in sentences]
-    follows = (
+    print("Parse {} sentences?".format(len(sentences)))
+    input("cont ?")
+    follows_i = (
         {}
     )  # TODO: notice, follows cache only needs instances and the last di's results. Smaller cache faster hits
     max_follow = None
@@ -134,57 +123,75 @@ def test_following_plus(param=None, validated_delay=[], maxdeg=0):
     # preload follows with existing database information
     # The problem with preloads is it requires lots of work for small additions, should work on merge version instead
     for wrd in session.query(instance).all():
-        follows[wrd.path()] = wrd
+        follows_i[wrd.path()] = wrd
     print("instance preload-complete")
-    delayset = update_instance(sentences, follows)
+    delayset, follows_i = update_instance(
+        sentences, follows_i, add=False
+    )  # add contributes to database freq TODO
+    serialize_delayset(delayset)
     print("instance update-complete, {} not found".format(len(delayset)))
 
-    # for flw in session.query(following_plus).all():
-    #    follows[flw.path()] = flw
-
-    # Pull the max id from the database to insert as autoid
-    autoid = max([i[0] for i in session.query(following_plus.id).all()] + [1])
-    print("autoid", end=":")
-    print(autoid)
-
-    maxdeg = max([len(sent) for sent in sentences] + [maxdeg])
+    if not maxdeg or maxdeg < 2:
+        maxdeg = max([len(sent) for sent in sentences] + [0])
     degrees = range(2, maxdeg)
-    delayqueue = Counter()
+    delayqueue_dic = {}
+    follows_l = {}
 
+    if degrees:
+        print("Begining parse to degree {}".format(degrees[-1]))
     for di in degrees:
-        work_order = (
-            [] + validated_delay
-        )  # TODO: validated_delay is empty but should be loadable from temp/delayed_ops.json (method prob req)
+        delayqueue = Counter()
+        # set follows cache with the last and inistances
+        follows = {}
+        follows.update(follows_i)
+        follows.update(follows_l)
+        follows_l = {}
+        if di in validated_delay:
+            work_order = [] + validated_delay[di]
+        else:
+            work_order = (
+                []
+            )  # TODO: validated_delay is empty but should be loadable from temp/delayed_ops.json (method prob req)
         updated_obj = []
         # generate all the tuples of length di and save in work_order
+        wo_i = 0
+        # while wo_i < len(sentences): #use copy for iterable, this is hard on mem, should work otherwise TODO notice, recently untracked modification to swap to a while loop instead of for with iterator
         for word_order in sentences:
+            # word_order=sentences[wo_i]
+            inc = 1
+            if di > len(word_order):
+                # sentences.pop(wo_i)
+                telemetry["degree_removal"] += 1
+                inc = 0
             for s in range(0, len(word_order) + 1):
                 if s + di > len(word_order):
                     break
                 label = tuple(word_order[s : s + di])
-                if label in follows:  # early cache check
-                    telemetry["early_cache"] += 1
-                    follows[label].add_freq()
-                    updated_obj.append(follows[label])
-                else:
-                    work_order.append(
-                        (
-                            label[:-1],
-                            label,
-                        )
+                # if label in follows:  # early cache check
+                #    telemetry["early_cache"] += 1
+                #    follows[label].add_freq()
+                #    updated_obj.append(follows[label])
+                # else:
+                work_order.append(
+                    (
+                        label[:-1],
+                        label,
                     )
+                )
+            wo_i += inc
         di -= 1  # TODO notice, degree is off by one in objects
 
         # prnt_obj = session.query(following_plus.parent_id,following_plus).filter(following_plus.degree==di-1).filter(following_plus.this_id.in_(work_order['this_id'])).order_by(following_plus.parent_id).order_by(following_plus.this_id).all()
         # update work_obj
         push_order = Counter()
+        if di in validated_delay:
+            push_order = Counter(validated_delay[di])
         for order in work_order:
             # this:
             # if not early cache check, do here
             # check follows cache for this:ids, parent:ids
             # new word, delay
             if (order[1][-1],) in follows and order[0] in follows:
-                # print('{}:{}'.format(order[0],follows[order[0]].id))
                 telemetry["push_order"] += 1
                 push_order[
                     (
@@ -193,58 +200,193 @@ def test_following_plus(param=None, validated_delay=[], maxdeg=0):
                         order[1],
                     )
                 ] += 1
+                # print('new push order: {} : {} :{}'.format(follows[order[0]].id, follows[(order[1][-1],)].id,order[1]))
             else:
                 # this_word or parent is not in cache
-                # print('delayqueue:{}'.format(order))
+                print("delayqueue:{}".format(order))
                 telemetry["delay_queue"] += 1
                 delayqueue[order] += 1
+                if (order[1][-1],) not in follows:
+                    telemetry["missing_this_id"] += 1
+                else:
+                    telemetry["missing_parent_id"] += 1
 
         print("query work_obj...")
-        work_obj = (
-            session.query(following_plus.parent_id, following_plus.id, following_plus)
-            .filter(following_plus.degree == di)
-            .filter(following_plus.this_id.in_([i[1] for i in push_order]))
-            .order_by(following_plus.parent_id)
-            .all()
+        # TODO: Large push orders will cause errors by excceding the "in_" clause limit 29k is fine, 47k is not
+        work_obj = []
+        print(
+            "pushorder size {} di {} follows {}".format(
+                len(push_order), di, len(follows)
+            )
         )
-        print("query work_obj done")
+        # input('cont?')
+        work_obj = []
+        ref_obj = []
+
+        po_parent = [pi[0] for pi in push_order]
+        po_this = [pi[1] for pi in push_order]
+        po_combo = [(p, t) for p, t in zip(po_parent, po_this)]
+        from datetime import datetime
+
+        # print(dir(session.query(following_plus)))
+        print("start new query")
+        logit = datetime.now()
+        # r1 = session.query(following_plus).filter(following_plus.degree==di).filter(following_plus.parent_id.in_(po_parent))
+        # r2 = session.query(following_plus).filter(following_plus.degree==di).filter(following_plus.this_id.in_(po_this))
+        # work_obj=session.query(following_plus).intersect(r1).intersect(r2).all()
+        # ref_obj=session.query(following_plus).intersect(r1).intersect(r2).with_entities(following_plus.parent_id,following_plus.this_id).all()
+        # joins are fundamentally a failure because they don't contain the nessasary
+        a1 = aliased(following_plus)
+        # work_obj = session.query(following_plus,a1).filter(a1.degree==di).filter(following_plus.degree==di).filter(a1.this_id.in_(po_this)).filter(following_plus.parent_id.in_(po_this)).join(a1, a1.id==following_plus.id).with_entities(following_plus)
+        work_obj = []
+        ref_obj = []
+        # rough estimate of 15000 portions before hitting object limit
+        blocks = list(range(0, len(push_order), 15000)) + [len(push_order)]
+        for bi in range(0, len(blocks) - 1):
+            po_slice = po_combo[blocks[bi] : blocks[bi + 1]]  # limit in_ size
+            work_obj += (
+                session.query(following_plus)
+                .filter(following_plus.degree == di)
+                .filter(
+                    tuple_(following_plus.parent_id, following_plus.this_id).in_(
+                        po_slice
+                    )
+                )
+                .all()
+            )
+            ref_obj += (
+                session.query(following_plus)
+                .filter(following_plus.degree == di)
+                .filter(
+                    tuple_(following_plus.parent_id, following_plus.this_id).in_(
+                        po_slice
+                    )
+                )
+                .with_entities(following_plus.parent_id, following_plus.this_id)
+                .all()
+            )
+        print(
+            "given results {}, {} at :{}".format(
+                len(work_obj), len(ref_obj), datetime.now() - logit
+            )
+        )
+        # print('\n'.join([str(wi.path()) for wi in work_obj]))
+
+        work_obj = []
+        ref_obj = []
+        print("start old query")
+        logit = datetime.now()
+        if push_order:
+            blocks = list(range(0, len(push_order), 900)) + [len(po_combo)]
+            for bi in range(0, len(blocks) - 1):
+                po_slice = list(push_order)[blocks[bi] : blocks[bi + 1]]
+                po_slice = [
+                    and_(
+                        following_plus.parent_id == po[0],
+                        following_plus.this_id == po[1],
+                    ).self_group()
+                    for po in po_slice
+                ]
+                # print(session.query(following_plus.parent_id, following_plus.id, following_plus).filter(following_plus.degree == di).filter(or_(*po_slice)))
+                work_obj += list(
+                    session.query(following_plus)
+                    .filter(following_plus.degree == di)
+                    .filter(or_(*po_slice))
+                    .order_by(following_plus.id)
+                    .all()
+                )
+                ref_obj += list(
+                    session.query(following_plus.parent_id, following_plus.this_id)
+                    .filter(following_plus.degree == di)
+                    .filter(or_(*po_slice))
+                    .order_by(following_plus.id)
+                    .all()
+                )
+                # work_obj += list(
+                #    session.query(following_plus.parent_id, following_plus.id, following_plus)
+                #    .filter(following_plus.degree == di)
+                #    .filter(following_plus.this_id.in_([i[1] for i in po_slice]))
+                #    .order_by(following_plus.parent_id)
+                #    .all()
+                # )
+                # print('po_slice {}, work_obj {}, ref_obj {}'.format(len(po_slice),len(work_obj),len(ref_obj)))
+            # input('cont?')
+            # should match get:  following_plus (degree==di, this_id==po[1], parent_id==po[0])
+        print(
+            "given {}, {}, done at:{}".format(
+                len(ref_obj), len(work_obj), datetime.now() - logit
+            )
+        )
+        # print('\n'.join([str(wi.path()) for wi in work_obj]))
+        input("cont?")
+        if len(push_order) != len(work_obj):
+            print("\n\nERROR, could not find everything")
+            input("continue?")
 
         print(len(work_obj), "work objects")
-        print("mem_check for push objects")
+        print("mem_check for {} push objects".format(len(push_order)))
         # pushorder: (parent_label, thislabel)
-        for po in push_order:
-            pobject = [w for w in work_obj if w[0] == po[0] and w[1] == po[1]]
-            if pobject:
+        for po in push_order:  # majority of computation time
+            # list against list
+            if po[:-1] in ref_obj:
+                pobject = work_obj[ref_obj.index(po[:-1])]
                 telemetry["DB_hit"] += 1
                 # print('DB hit',push_order[po],po)
                 # input('pobject: {}'.format(pobject[0][2]))
-                pobject[0][2].add_freq(push_order[po])
-                updated_obj.append(pobject[0][2])
-                work_obj.remove(pobject[0])
+                pobject.add_freq(push_order[po])
+                updated_obj.append(pobject)
+                # follows[po[2]] = pobject
+                follows_l[po[2]] = pobject
+                work_obj.remove(pobject)  # limit size
+                ref_obj.remove(po[:-1])  # limit size
                 # push_order.popitem(po)
             else:
                 # print('new object needed', po[0],po[1],push_order[po])
                 telemetry["DB_miss_create_new"] += 1
                 newobj = following_plus(po[0], po[1], push_order[po], di)
                 # print('\t',po[2],newobj)
-                follows[po[2]] = newobj
+                # follows[po[2]] = newobj
+                follows_l[po[2]] = newobj
                 updated_obj.append(newobj)
-
+            # input('quit')
         print(
-            "{} in delay queue, {} rdy to commit, {} to merge check di {}".format(
+            "\n{} in delay queue, {} rdy to commit, {} to merge check di {}".format(
                 len(delayqueue), len(updated_obj), len(push_order), di
             )
         )
+        if delayqueue:
+            delayqueue_dic[di] = delayqueue
         session.add_all(updated_obj)
-        session.commit()
+        # session.commit()
+
     print(
         "\n{} new objects in delayqueue\nDELAYSET:{}".format(len(delayqueue), delayset)
     )
 
-    delay_ops(delayset, delayqueue)
     print("for {} sentences:".format(len(sentences)), telemetry)
     if delayset:
         print('please run "verify_words" and then this again')
+    if delayqueue_dic:
+        print("{} degrees in delayqueue_dic".format(len(delayqueue_dic)))
+        serialize_delayqueue(delayqueue_dic)
+
+
+def check_instance(*param):
+    if not param:
+        param = input("please enter a word to check: ")
+    else:
+        param = param[0]
+    res = session.query(instance).filter(instance.text == param).first()
+    multi = session.query(instance).filter(instance.text.startswith(param)).all()
+    if not res:
+        print('"{}" did not appear'.format(param))
+        if multi:
+            print("\ndid you mean...")
+            for mul in multi:
+                print("\t{}".format(mul))
+    else:
+        print(res)
+        print("{} multi's found".format(len(multi)))
 
 
 def following_plus_peek(param=None):
@@ -358,17 +500,19 @@ def sources(*param):
 
 
 def debug(param=None):
-    print(session.query(instance).filter(instance.id == 9).all())  # 9,15,19
-    print(session.query(instance).filter(instance.id == 15).all())  # 9,15,19
-    print(session.query(instance).filter(instance.id == 19).all())  # 9,15,19
-    text = input("\ngive me a word: ")
-    print('looking for "{}"'.format(text))
-    ires = session.query(instance).filter(instance.text == text).first()
-    print(ires, session.query(instance).filter(instance.text == text).count())
-    fps = session.query(following_plus).filter(following_plus.this_id == ires.id).all()
-    print("next\n")
-    for fp in fps:
-        print(fp, fp.path(), fp.parent)
+    fp1 = aliased(following_plus)
+    fp2 = aliased(following_plus)
+    fp3 = aliased(following_plus)
+    print("1 {}, 2 {}, 3 {}".format(fp1, fp2, fp3))
+    print("obj", dir(fp1))
+    print("query", dir(session.query(fp1)))
+    r1 = session.query(fp1).filter(fp1.degree == 2)
+    r2 = session.query(fp2).filter(fp2.this_id.in_(list(range(1, 10000))))
+    r3 = session.query(fp3).filter(fp3.parent_id.in_(list(range(100, 10000))))
+    print(r1.intersect(r2, r3).count())
+    # print(r1.join(r2).first())
+    # res = session.query(fp2).join(fp1, fp2.id==fp1.id).filter(fp2.id>2).filter(fp1.id<10).order_by(fp1.id.desc()).
+    # print(res)
 
 
 def test_data(*param):
@@ -464,7 +608,7 @@ def test_dictionary():
     print("{} terms missing".format(len(missing)))
 
 
-def clean_alice():
+def clean_book(title):
     """
     Known issues:
     - Chapter titles, spacing defined seperation
@@ -473,21 +617,25 @@ def clean_alice():
     """
     import re
 
+    # title = 'alice'
+    # title = 'Pride_and_Prejudice'
     def any(tup):
         if tup[0]:
             return tup[0].lower()
         elif tup[1]:
             return tup[1].lower()
 
-    text = open("../alice.txt", "r", encoding="utf-8").read()
-    out = open("../clean_alice.txt", "w", encoding="utf-8")
+    text = open("../books/" + title + ".txt", "r", encoding="utf-8").read()
+    out = open("../books/clean_" + title + ".txt", "w", encoding="utf-8")
+    if text:
+        print('"{}" book found'.format(title))
     for sentence in re.findall(r"[^.!?]+[.!?]", text):
         if sentence:
             sentence = sentence.replace("\n", " ")
             words = [
                 any(i)
                 for i in re.findall(
-                    r"([a-zA-Z]+[\-\'][a-zA-Z]+)|([&a-zA-Z]+)", sentence
+                    r"([a-zA-Z]+[\-\'\’][a-zA-Z]+)|([&a-zA-Z]+)", sentence
                 )
                 if i
             ]
