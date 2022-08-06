@@ -286,7 +286,7 @@ class model_source(Base):
     id          Int     Indentifier
     source      Str     Base source
     specific    Str     Optional more specific source information
-        UniqueConstraint(source & specific)
+        UniqueConstraint(source, specific)
 
     tags    tag     relationship based on id
     """
@@ -345,6 +345,7 @@ class following_plus(Base):
     freq        Int         Running Count
     this_id     Int         Instance Id, for current relation
     this        Relation    instance relation
+        UniqueConstraint(degree, parent_id, this_id)
 
     Property Methods:
     text        Text relatino from this_id
@@ -368,6 +369,7 @@ class following_plus(Base):
     freq = Column(Integer)
     this_id = Column(Integer, ForeignKey("instance.id"))
     this = relationship("instance", primaryjoin="instance.id==following_plus.this_id")
+    UniqueConstraint(degree, parent_id, this_id, name="instance_chain")  # onupdate
 
     @property
     def text(self):
@@ -413,7 +415,7 @@ class following_plus(Base):
                     following_plus.degree == self.degree + 1,
                 )
             )
-            .order_by(following_plus.freq)
+            .order_by(following_plus.freq.desc())
             .first()
         )
 
@@ -430,7 +432,7 @@ class following_plus(Base):
                     following_plus.degree == self.degree + 1,
                 )
             )
-            .order_by(following_plus.freq)
+            .order_by(following_plus.freq.desc())
             .all()
         )
 
@@ -447,7 +449,7 @@ class following_plus(Base):
                     where,
                 )
             )
-            .order_by(following_plus.freq)
+            .order_by(following_plus.freq.desc())
             .all()
         )
 
