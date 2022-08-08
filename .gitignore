@@ -4,5 +4,6 @@
 ~*
 *.ods
 temp/*
+books/*
 *.db
 __*__
