@@ -2,6 +2,8 @@
 # Shane_Hazelquist #Date: Friday, 7/1/2022  #Time: 12:14.19
 # Imports:
 from sys import argv
+from os import listdir
+from datetime import datetime
 from ray import *
 import db_suite as mainself
 from json import loads, load, dump
@@ -72,8 +74,35 @@ def update_instance(sentences, follows, add=True):
     print("updated instance of {} words".format(len(words)))
     return delayset, ui
 
+def make_sentences(text):
+    sentences = [[wrd for wrd in sent.split(" ") if wrd] for sent in text.split('\n')]
+    return sentences
 
-def test_following_plus(param=None, validated_delay={}, maxdeg=0):
+def push_book(title=None):
+    if title:
+        clean_name = 'clean_'+title+'.txt'
+        print('checking for "{}"'.format(title))
+        if session.query(model_source).filter(model_source.specific==clean_name).first():
+            print('Book already added')
+            exit(1)
+        text = open('../books/'+clean_name,'r',encoding='utf-8').read()
+        sentences = make_sentences(text)
+        print("\nParse {} sentences? y/n".format(len(sentences)))
+        commit_status=False
+        if input('Confirm commit status: ')=='y':
+            commit_status=True
+        test_following_plus(sentences,commit_status=commit_status)
+        if commit_status:
+            print('pushing book "{}" as source'.format(title))
+            ref = model_source(title,clean_name)
+            session.add(ref)
+            session.commit()
+            ref.add_tag('book')
+            session.commit()
+    else:
+        print('Books avaliable:\n\t{}'.format('\n\t'.join([bk[6:] for bk in listdir('../books') if 'clean_' in bk])))
+
+def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_status=False):
     """
     Test following plus by loading sentence information
 
@@ -94,26 +123,26 @@ def test_following_plus(param=None, validated_delay={}, maxdeg=0):
             or delayqueue the request
 
     """
-    input("continue? note, this may mess with data in a current db")
-    sentences = [
-        "the quick brown fox jumped over the lazy dog",
-        "the quick red fox jumped over the stinky dog",
-        "the ragged fox jumped over the dog",
-        "the fox attacked the old dog",
-        "a fox attacked an old dog",
-        "the old dog could not react to the quick fox",
-        "the brown dog could not react to the lazy fox",
-    ]
-    title = "Pride_and_Prejudice"
-    title = "alice"
-    # push_order 1112195, DB_miss_create_new 1030494, delay_queue 549379, degree removal 7139, DB_hit 158
-    # sentences = open('../books/clean_'+title+'.txt','r',encoding='utf-8').read().split('\n')
-    sentences = [sent.split(" ") for sent in sentences]
-    print("Parse {} sentences?".format(len(sentences)))
-    input("cont ?")
-    follows_i = (
-        {}
-    )  # TODO: notice, follows cache only needs instances and the last di's results. Smaller cache faster hits
+    
+    if commit_status:
+        print('commit warning')
+        input("continue? note, this may mess with data in a current db")
+    print()
+    if not sentences:
+        sentences = [
+            "the quick brown fox jumped over the lazy dog",
+            "the quick red fox jumped over the stinky dog",
+            "the ragged fox jumped over the dog",
+            "the fox attacked the old dog",
+            "a fox attacked an old dog",
+            "the old dog could not react to the quick fox",
+            "the brown dog could not react to the lazy fox",
+        ]
+    #maxdeg = 5
+    #title = "The_Picture_of_Dorian_Gray"
+
+    start_time = datetime.now()
+    follows_i = {} # TODO: notice, follows cache only needs instances and the last di's results. Smaller cache faster hits
     max_follow = None
     telemetry = Counter()
     # Given source, check current source in the database
@@ -129,6 +158,9 @@ def test_following_plus(param=None, validated_delay={}, maxdeg=0):
         sentences, follows_i, add=False
     )  # add contributes to database freq TODO
     serialize_delayset(delayset)
+    if delayset:
+        print('please check "{}delayed_set.json" to verify then run "verify_words" and then this again'.format(temp_path))
+        exit(1)
     print("instance update-complete, {} not found".format(len(delayset)))
 
     if not maxdeg or maxdeg < 2:
@@ -155,23 +187,19 @@ def test_following_plus(param=None, validated_delay={}, maxdeg=0):
         updated_obj = []
         # generate all the tuples of length di and save in work_order
         wo_i = 0
-        # while wo_i < len(sentences): #use copy for iterable, this is hard on mem, should work otherwise TODO notice, recently untracked modification to swap to a while loop instead of for with iterator
-        for word_order in sentences:
-            # word_order=sentences[wo_i]
+        while wo_i < len(sentences): #use copy for iterable, this is hard on mem, should work otherwise TODO notice, recently untracked modification to swap to a while loop instead of for with iterator
+            #for word_order in sentences:
+            word_order=sentences[wo_i]
             inc = 1
             if di > len(word_order):
-                # sentences.pop(wo_i)
+                sentences.pop(wo_i)
                 telemetry["degree_removal"] += 1
                 inc = 0
+                continue
             for s in range(0, len(word_order) + 1):
                 if s + di > len(word_order):
                     break
                 label = tuple(word_order[s : s + di])
-                # if label in follows:  # early cache check
-                #    telemetry["early_cache"] += 1
-                #    follows[label].add_freq()
-                #    updated_obj.append(follows[label])
-                # else:
                 work_order.append(
                     (
                         label[:-1],
@@ -181,7 +209,6 @@ def test_following_plus(param=None, validated_delay={}, maxdeg=0):
             wo_i += inc
         di -= 1  # TODO notice, degree is off by one in objects
 
-        # prnt_obj = session.query(following_plus.parent_id,following_plus).filter(following_plus.degree==di-1).filter(following_plus.this_id.in_(work_order['this_id'])).order_by(following_plus.parent_id).order_by(following_plus.this_id).all()
         # update work_obj
         push_order = Counter()
         if di in validated_delay:
@@ -223,48 +250,40 @@ def test_following_plus(param=None, validated_delay={}, maxdeg=0):
         work_obj = []
         ref_obj = []
 
-        po_parent = [pi[0] for pi in push_order]
-        po_this = [pi[1] for pi in push_order]
-        po_combo = [(p, t) for p, t in zip(po_parent, po_this)]
-        from datetime import datetime
+        po_combo = [(pi[0], pi[1]) for pi in push_order]
 
         # print(dir(session.query(following_plus)))
         print("start new query")
         logit = datetime.now()
-        # r1 = session.query(following_plus).filter(following_plus.degree==di).filter(following_plus.parent_id.in_(po_parent))
-        # r2 = session.query(following_plus).filter(following_plus.degree==di).filter(following_plus.this_id.in_(po_this))
-        # work_obj=session.query(following_plus).intersect(r1).intersect(r2).all()
-        # ref_obj=session.query(following_plus).intersect(r1).intersect(r2).with_entities(following_plus.parent_id,following_plus.this_id).all()
-        # joins are fundamentally a failure because they don't contain the nessasary
-        a1 = aliased(following_plus)
-        # work_obj = session.query(following_plus,a1).filter(a1.degree==di).filter(following_plus.degree==di).filter(a1.this_id.in_(po_this)).filter(following_plus.parent_id.in_(po_this)).join(a1, a1.id==following_plus.id).with_entities(following_plus)
+
         work_obj = []
         ref_obj = []
         # rough estimate of 15000 portions before hitting object limit
-        blocks = list(range(0, len(push_order), 15000)) + [len(push_order)]
-        for bi in range(0, len(blocks) - 1):
-            po_slice = po_combo[blocks[bi] : blocks[bi + 1]]  # limit in_ size
-            work_obj += (
-                session.query(following_plus)
-                .filter(following_plus.degree == di)
-                .filter(
-                    tuple_(following_plus.parent_id, following_plus.this_id).in_(
-                        po_slice
+        if po_combo:
+            blocks = list(range(0, len(push_order), 15000)) + [len(push_order)]
+            for bi in range(0, len(blocks) - 1):
+                po_slice = po_combo[blocks[bi] : blocks[bi + 1]]  # limit in_ size
+                work_obj += (
+                    session.query(following_plus)
+                    .filter(following_plus.degree == di)
+                    .filter(
+                        tuple_(following_plus.parent_id, following_plus.this_id).in_(
+                            po_slice
+                        )
                     )
+                    .all()
                 )
-                .all()
-            )
-            ref_obj += (
-                session.query(following_plus)
-                .filter(following_plus.degree == di)
-                .filter(
-                    tuple_(following_plus.parent_id, following_plus.this_id).in_(
-                        po_slice
+                ref_obj += (
+                    session.query(following_plus)
+                    .filter(following_plus.degree == di)
+                    .filter(
+                        tuple_(following_plus.parent_id, following_plus.this_id).in_(
+                            po_slice
+                        )
                     )
+                    .with_entities(following_plus.parent_id, following_plus.this_id)
+                    .all()
                 )
-                .with_entities(following_plus.parent_id, following_plus.this_id)
-                .all()
-            )
         print(
             "given results {}, {} at :{}".format(
                 len(work_obj), len(ref_obj), datetime.now() - logit
@@ -272,56 +291,9 @@ def test_following_plus(param=None, validated_delay={}, maxdeg=0):
         )
         # print('\n'.join([str(wi.path()) for wi in work_obj]))
 
-        work_obj = []
-        ref_obj = []
-        print("start old query")
-        logit = datetime.now()
-        if push_order:
-            blocks = list(range(0, len(push_order), 900)) + [len(po_combo)]
-            for bi in range(0, len(blocks) - 1):
-                po_slice = list(push_order)[blocks[bi] : blocks[bi + 1]]
-                po_slice = [
-                    and_(
-                        following_plus.parent_id == po[0],
-                        following_plus.this_id == po[1],
-                    ).self_group()
-                    for po in po_slice
-                ]
-                # print(session.query(following_plus.parent_id, following_plus.id, following_plus).filter(following_plus.degree == di).filter(or_(*po_slice)))
-                work_obj += list(
-                    session.query(following_plus)
-                    .filter(following_plus.degree == di)
-                    .filter(or_(*po_slice))
-                    .order_by(following_plus.id)
-                    .all()
-                )
-                ref_obj += list(
-                    session.query(following_plus.parent_id, following_plus.this_id)
-                    .filter(following_plus.degree == di)
-                    .filter(or_(*po_slice))
-                    .order_by(following_plus.id)
-                    .all()
-                )
-                # work_obj += list(
-                #    session.query(following_plus.parent_id, following_plus.id, following_plus)
-                #    .filter(following_plus.degree == di)
-                #    .filter(following_plus.this_id.in_([i[1] for i in po_slice]))
-                #    .order_by(following_plus.parent_id)
-                #    .all()
-                # )
-                # print('po_slice {}, work_obj {}, ref_obj {}'.format(len(po_slice),len(work_obj),len(ref_obj)))
-            # input('cont?')
-            # should match get:  following_plus (degree==di, this_id==po[1], parent_id==po[0])
-        print(
-            "given {}, {}, done at:{}".format(
-                len(ref_obj), len(work_obj), datetime.now() - logit
-            )
-        )
-        # print('\n'.join([str(wi.path()) for wi in work_obj]))
-        input("cont?")
-        if len(push_order) != len(work_obj):
-            print("\n\nERROR, could not find everything")
-            input("continue?")
+        #if len(push_order) != len(work_obj):
+        #    print("\n\nERROR, could not find everything")
+        #    input("continue?")
 
         print(len(work_obj), "work objects")
         print("mem_check for {} push objects".format(len(push_order)))
@@ -357,19 +329,18 @@ def test_following_plus(param=None, validated_delay={}, maxdeg=0):
         if delayqueue:
             delayqueue_dic[di] = delayqueue
         session.add_all(updated_obj)
-        # session.commit()
+        if commit_status:
+            session.commit()
 
     print(
         "\n{} new objects in delayqueue\nDELAYSET:{}".format(len(delayqueue), delayset)
     )
 
     print("for {} sentences:".format(len(sentences)), telemetry)
-    if delayset:
-        print('please run "verify_words" and then this again')
     if delayqueue_dic:
         print("{} degrees in delayqueue_dic".format(len(delayqueue_dic)))
         serialize_delayqueue(delayqueue_dic)
-
+    print('Completed in {}, commit status:{}'.format(datetime.now()-start_time,commit_status))
 
 def check_instance(*param):
     if not param:
@@ -473,16 +444,22 @@ def following_plus_peek(param=None):
 def push_characters(target, param=None):
     pass
 
+def add_tag(*param):
+    print('add "{}" as a new tag? y/n'.format(param))
+    if input('confirm: ')=='y':
+        session.add(tag(param))
+        session.commit()
+        print('Done')
 
 def sources(*param):
     opts = []
     if param:
         opts = param
     if "maketag" in opts:
-        session.add(tag("debug"))
-        session.add(tag("dictionary"))
-        session.add(tag("text"))
-        session.add(tag("web"))
+        #session.add(tag("debug"))
+        #session.add(tag("dictionary"))
+        #session.add(tag("text"))
+        #session.add(tag("web"))
         session.add(tag("book"))
         session.commit()
     if "showtag" in opts:
@@ -496,7 +473,8 @@ def sources(*param):
         session.commit()
         db_alice.add_tags(["debug", "text"]).commit()
     if "showsource" in opts:
-        print((session.query(model_source).all()))
+        for source in session.query(model_source).all():
+            print(source)
 
 
 def debug(param=None):
@@ -627,6 +605,7 @@ def clean_book(title):
 
     text = open("../books/" + title + ".txt", "r", encoding="utf-8").read()
     out = open("../books/clean_" + title + ".txt", "w", encoding="utf-8")
+    lines = 0
     if text:
         print('"{}" book found'.format(title))
     for sentence in re.findall(r"[^.!?]+[.!?]", text):
@@ -637,11 +616,13 @@ def clean_book(title):
                 for i in re.findall(
                     r"([a-zA-Z]+[\-\'\’][a-zA-Z]+)|([&a-zA-Z]+)", sentence
                 )
-                if i
+                if i and len(i)>0
             ]
-            out.write(" ".join(words) + "\n")
+            if words:
+                out.write(" ".join(words) + "\n")
+                lines+=1
     out.close()
-    print("done")
+    print("done, wrote {} lines".format(lines))
 
 
 def main():
