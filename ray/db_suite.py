@@ -74,35 +74,48 @@ def update_instance(sentences, follows, add=True):
     print("updated instance of {} words".format(len(words)))
     return delayset, ui
 
+
 def make_sentences(text):
-    sentences = [[wrd for wrd in sent.split(" ") if wrd] for sent in text.split('\n')]
+    sentences = [[wrd for wrd in sent.split(" ") if wrd] for sent in text.split("\n")]
     return sentences
+
 
 def push_book(title=None):
     if title:
-        clean_name = 'clean_'+title+'.txt'
+        clean_name = "clean_" + title + ".txt"
         print('checking for "{}"'.format(title))
-        if session.query(model_source).filter(model_source.specific==clean_name).first():
-            print('Book already added')
+        if (
+            session.query(model_source)
+            .filter(model_source.specific == clean_name)
+            .first()
+        ):
+            print("Book already added")
             exit(1)
-        text = open('../books/'+clean_name,'r',encoding='utf-8').read()
+        text = open("../books/" + clean_name, "r", encoding="utf-8").read()
         sentences = make_sentences(text)
         print("\nParse {} sentences? y/n".format(len(sentences)))
-        commit_status=False
-        if input('Confirm commit status: ')=='y':
-            commit_status=True
-        test_following_plus(sentences,commit_status=commit_status)
+        commit_status = False
+        if input("Confirm commit status: ") == "y":
+            commit_status = True
+        test_following_plus(sentences, commit_status=commit_status)
         if commit_status:
             print('pushing book "{}" as source'.format(title))
-            ref = model_source(title,clean_name)
+            ref = model_source(title, clean_name)
             session.add(ref)
             session.commit()
-            ref.add_tag('book')
+            ref.add_tag("book")
             session.commit()
     else:
-        print('Books avaliable:\n\t{}'.format('\n\t'.join([bk[6:] for bk in listdir('../books') if 'clean_' in bk])))
+        print(
+            "Books avaliable:\n\t{}".format(
+                "\n\t".join([bk[6:] for bk in listdir("../books") if "clean_" in bk])
+            )
+        )
 
-def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_status=False):
+
+def test_following_plus(
+    sentences=None, validated_delay={}, maxdeg=0, commit_status=False
+):
     """
     Test following plus by loading sentence information
 
@@ -123,9 +136,9 @@ def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_sta
             or delayqueue the request
 
     """
-    
+
     if commit_status:
-        print('commit warning')
+        print("commit warning")
         input("continue? note, this may mess with data in a current db")
     print()
     if not sentences:
@@ -138,11 +151,13 @@ def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_sta
             "the old dog could not react to the quick fox",
             "the brown dog could not react to the lazy fox",
         ]
-    #maxdeg = 5
-    #title = "The_Picture_of_Dorian_Gray"
+    # maxdeg = 5
+    # title = "The_Picture_of_Dorian_Gray"
 
     start_time = datetime.now()
-    follows_i = {} # TODO: notice, follows cache only needs instances and the last di's results. Smaller cache faster hits
+    follows_i = (
+        {}
+    )  # TODO: notice, follows cache only needs instances and the last di's results. Smaller cache faster hits
     max_follow = None
     telemetry = Counter()
     # Given source, check current source in the database
@@ -159,7 +174,11 @@ def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_sta
     )  # add contributes to database freq TODO
     serialize_delayset(delayset)
     if delayset:
-        print('please check "{}delayed_set.json" to verify then run "verify_words" and then this again'.format(temp_path))
+        print(
+            'please check "{}delayed_set.json" to verify then run "verify_words" and then this again'.format(
+                temp_path
+            )
+        )
         exit(1)
     print("instance update-complete, {} not found".format(len(delayset)))
 
@@ -187,9 +206,11 @@ def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_sta
         updated_obj = []
         # generate all the tuples of length di and save in work_order
         wo_i = 0
-        while wo_i < len(sentences): #use copy for iterable, this is hard on mem, should work otherwise TODO notice, recently untracked modification to swap to a while loop instead of for with iterator
-            #for word_order in sentences:
-            word_order=sentences[wo_i]
+        while wo_i < len(
+            sentences
+        ):  # use copy for iterable, this is hard on mem, should work otherwise TODO notice, recently untracked modification to swap to a while loop instead of for with iterator
+            # for word_order in sentences:
+            word_order = sentences[wo_i]
             inc = 1
             if di > len(word_order):
                 sentences.pop(wo_i)
@@ -291,7 +312,7 @@ def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_sta
         )
         # print('\n'.join([str(wi.path()) for wi in work_obj]))
 
-        #if len(push_order) != len(work_obj):
+        # if len(push_order) != len(work_obj):
         #    print("\n\nERROR, could not find everything")
         #    input("continue?")
 
@@ -340,7 +361,12 @@ def test_following_plus(sentences=None, validated_delay={}, maxdeg=0, commit_sta
     if delayqueue_dic:
         print("{} degrees in delayqueue_dic".format(len(delayqueue_dic)))
         serialize_delayqueue(delayqueue_dic)
-    print('Completed in {}, commit status:{}'.format(datetime.now()-start_time,commit_status))
+    print(
+        "Completed in {}, commit status:{}".format(
+            datetime.now() - start_time, commit_status
+        )
+    )
+
 
 def check_instance(*param):
     if not param:
@@ -444,22 +470,24 @@ def following_plus_peek(param=None):
 def push_characters(target, param=None):
     pass
 
+
 def add_tag(*param):
     print('add "{}" as a new tag? y/n'.format(param))
-    if input('confirm: ')=='y':
+    if input("confirm: ") == "y":
         session.add(tag(param))
         session.commit()
-        print('Done')
+        print("Done")
+
 
 def sources(*param):
     opts = []
     if param:
         opts = param
     if "maketag" in opts:
-        #session.add(tag("debug"))
-        #session.add(tag("dictionary"))
-        #session.add(tag("text"))
-        #session.add(tag("web"))
+        # session.add(tag("debug"))
+        # session.add(tag("dictionary"))
+        # session.add(tag("text"))
+        # session.add(tag("web"))
         session.add(tag("book"))
         session.commit()
     if "showtag" in opts:
@@ -616,11 +644,11 @@ def clean_book(title):
                 for i in re.findall(
                     r"([a-zA-Z]+[\-\'\’][a-zA-Z]+)|([&a-zA-Z]+)", sentence
                 )
-                if i and len(i)>0
+                if i and len(i) > 0
             ]
             if words:
                 out.write(" ".join(words) + "\n")
-                lines+=1
+                lines += 1
     out.close()
     print("done, wrote {} lines".format(lines))
 
