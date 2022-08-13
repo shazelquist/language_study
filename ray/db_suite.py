@@ -4,6 +4,7 @@
 from sys import argv
 from os import listdir
 from datetime import datetime
+import suite
 from ray import *
 import db_suite as mainself
 from json import loads, load, dump
@@ -16,6 +17,7 @@ from collections import Counter  # todo
 #
 
 
+@suite.add_func
 def erase_db(param=None):
     if input("Do you really want to delete & remake {}? y/n\t".format(dburl)) != "y":
         return
@@ -40,7 +42,7 @@ def serialize_delayqueue(dqueue):
             dqueue[k] = dict(dqueue[k])
         dump(dqueue, wordset)
 
-
+@suite.add_func
 def verify_words(param=None):
     with open(temp_path + "delayed_set.json", "r", encoding="utf-8") as wordset:
         objects = load(wordset)
@@ -56,6 +58,7 @@ def verify_words(param=None):
     session.commit()
 
 
+@suite.add_func
 def update_instance(sentences, follows, add=True):
     words = Counter()
     for s in sentences:
@@ -80,6 +83,7 @@ def make_sentences(text):
     return sentences
 
 
+@suite.add_func
 def push_book(title=None):
     if title:
         clean_name = "clean_" + title + ".txt"
@@ -368,6 +372,7 @@ def test_following_plus(
     )
 
 
+@suite.add_func
 def check_instance(*param):
     if not param:
         param = input("please enter a word to check: ")
@@ -386,6 +391,7 @@ def check_instance(*param):
         print("{} multi's found".format(len(multi)))
 
 
+@suite.add_func
 def following_plus_peek(param=None):
     # modify to use function.func for backtracking
     if not param:
@@ -471,6 +477,7 @@ def push_characters(target, param=None):
     pass
 
 
+@suite.add_func
 def add_tag(*param):
     print('add "{}" as a new tag? y/n'.format(param))
     if input("confirm: ") == "y":
@@ -479,6 +486,7 @@ def add_tag(*param):
         print("Done")
 
 
+@suite.add_func
 def sources(*param):
     opts = []
     if param:
@@ -505,6 +513,7 @@ def sources(*param):
             print(source)
 
 
+@suite.add_func
 def debug(param=None):
     fp1 = aliased(following_plus)
     fp2 = aliased(following_plus)
@@ -521,6 +530,7 @@ def debug(param=None):
     # print(res)
 
 
+@suite.add_func
 def test_data(*param):
     if not param:
         param = input("Please enter a query:")
@@ -543,6 +553,7 @@ def test_data(*param):
                 print(term.text, term.freq)
 
 
+@suite.add_func
 def peek(param=None):
     global session
     print("instances count {}".format(session.query(instance).count()))
@@ -555,6 +566,7 @@ def peek(param=None):
     print("following plus {}".format(session.query(following_plus).count()))
 
 
+@suite.add_func
 def dump_instance(param=None):
     words = session.query(instance).order_by(instance.freq).all()
     print("all instances:")
@@ -562,6 +574,7 @@ def dump_instance(param=None):
         print(w)
 
 
+@suite.add_func
 def dump_following(param=None):
     words = session.query(following).order_by(following.freq).all()
     print("all following:")
@@ -569,6 +582,7 @@ def dump_following(param=None):
         print(w, w.parent.text, w.text.text)
 
 
+@suite.add_func
 def guess_next(param=None):
     query = input("enter a word:")
     word = session.query(instance).filter(instance.text == query).first()
@@ -588,10 +602,7 @@ def guess_next(param=None):
         print(child.text.text, child.probability)
 
 
-def echo(*param):
-    print(param)
-
-
+@suite.add_func
 def load_dictionary(source=temp_path + "terms.json", param=None):
     with open(source, "r", encoding="utf-8") as jfile:
         dic_terms = load(jfile)
@@ -605,6 +616,7 @@ def load_dictionary(source=temp_path + "terms.json", param=None):
     session.commit()
 
 
+@suite.add_func
 def test_dictionary():
     print("loading terms")
     terms = loads(open(temp_path + "terms.json", "r", encoding="utf-8").read())
@@ -614,6 +626,7 @@ def test_dictionary():
     print("{} terms missing".format(len(missing)))
 
 
+@suite.add_func
 def clean_book(title):
     """
     Known issues:
@@ -654,39 +667,7 @@ def clean_book(title):
 
 
 def main():
-    cm_param = argv[1:]
-    print("starting suite, param:", cm_param)
-    actions = [i[1:] for i in cm_param if (i and i[0] == "-")]
-    print("starting actions", actions)
-    print("avaliable actions:", [i for i in dir(mainself) if "__" not in i])
-    while actions:
-        print(actions)
-        action = actions[0]
-        plimit = cm_param.index("-" + action) + 1
-        while plimit < len(cm_param) and cm_param[plimit][0] != "-":
-            plimit += 1
-        print(cm_param[cm_param.index("-" + action) + 1 : plimit])
-
-        if action in dir(mainself):
-            print('found function "{}"'.format(action))
-            getattr(mainself, action)(
-                *cm_param[cm_param.index("-" + action) + 1 : plimit]
-            )
-        else:
-            print('could not find function "{}"'.format(action))
-
-        del actions[0]
-        del cm_param[:plimit]
-
-    for aindex in range(0, len(actions)):
-        action = actions[aindex]
-        pstart = cm_param.index("-" + action)
-        plimit = len(cm_param)
-        if aindex < len(actions):
-            plimit = cm_param.index("-" + actions[aindex + 1])
-        print("splice [{}:{}]".format(pstart, plimit), cm_param[pstart:plimit])
-        # index = cm_param.index('-'+action)
-
+    suite.run_suite()
 
 if __name__ == "__main__":
     main()
