@@ -31,8 +31,7 @@ def erase_db(param=None):
 
 def serialize_delayset(dset):
     with open(temp_path + "delayed_set.json", "w", encoding="utf-8") as wordset:
-        dump(list(dset), wordset)
-
+        dump(list(dset),wordset,indent=4)
 
 def serialize_delayqueue(dqueue):
     with open(temp_path + "delayed_ops.json", "w", encoding="utf-8") as wordset:
