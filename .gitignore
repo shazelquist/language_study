@@ -7,3 +7,5 @@ temp/*
 books/*
 *.db
 __*__
+archive/*
+sources/*
