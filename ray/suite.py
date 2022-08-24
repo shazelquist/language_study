@@ -1,5 +1,6 @@
-#!C:/Python_X64/python
 #!/usr/bin/python3
+#!C:/Python_X64/python
+# -*- coding = utf-8 -*-
 """
 Provides functionality for quickly developing python tests & operations by methods
 

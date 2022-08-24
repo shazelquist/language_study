@@ -1,4 +1,6 @@
+#!/usr/bin/python3
 #!C:/Python_X64/python
+# -*- coding = utf-8 -*-
 # Shane_Hazelquist #Date: Friday, 7/1/2022  #Time: 12:14.19
 # Imports:
 from sys import argv
