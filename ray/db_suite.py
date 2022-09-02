@@ -627,6 +627,24 @@ def test_dictionary():
     print(missing)
     print("{} terms missing".format(len(missing)))
 
+@suite.add_func
+def query_instance_net(*term):
+    if not term:
+        term = input('please enter a term')
+    else:
+        term = term[0]
+    reference = session.query(instance).filter(instance.text==term).first()
+    if reference:
+        print('found reference term "{}", finding nodes now...'.format(reference))
+        ones = list(session.query(following_plus).filter(and_(following_plus.degree==1, following_plus.parent_id==reference.id)).all())
+        more = list(session.query(following_plus).filter(and_(following_plus.degree>1, following_plus.this_id==reference.id)).all())
+        all_nodes = ones+more
+        print('resulting nodes: ones {}, more {}, all {}'.format(len(ones),len(more),len(all_nodes)))
+        with open('instance_net_out.txt','w',encoding='utf-8') as outfile:
+            print('writing instances to file')
+            for node in all_nodes:
+                outfile.write('{} {}\n'.format(node.path(),', '.join([str(itm) for itm in node.export_as(['freq','probability','degree'])])))
+    
 
 @suite.add_func
 def clean_book(title):

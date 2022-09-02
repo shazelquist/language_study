@@ -360,6 +360,7 @@ class following_plus(Base):
     path                Generates word tuple of instance text order
     update_freq         Update the probability
     add_freq            Update the probability
+    child_sets          Depth first search through children
     """
 
     __tablename__ = "following_plus"
@@ -419,6 +420,29 @@ class following_plus(Base):
             .first()
         )
 
+    def child_sets(self, text=True):
+        """
+        Depth-first search through children for the tuple sets
+        """
+        def __r_child__(node,sets,text):
+            children = node.children
+            if children:
+                for chld in children:
+                    sets+=__r_child__(chld,sets,text)
+            else:
+                sets.append(self.path(text))
+            return sets
+        return __r_child__(self,[],text)
+
+    def export_as(self, order):
+        """
+        export_as(self, order:list)
+
+        returns a list of properties in the order properties given
+        (a better method would be to require actual proper queries in most cases)
+        """
+        return [getattr(self,prop) for prop in order if hasattr(self,prop)]
+
     @property
     def children(self):
         """
@@ -464,16 +488,28 @@ class following_plus(Base):
         self.this_id = this
         self.freq = frequency
 
-    def path(self):
+    def path(self, text=True):
         """
-        Generates a tuple of given text from ancester to this
+        path(self, text)
+
+        Generates a tuple of given objects from ancester to this
+
+        if text, then generates tuple containing only the text fields
         """
-        path = [self.text]
+
         node = self.parent
-        while hasattr(node, "degree"):
-            path.insert(0, node.text)
-            node = node.parent
-        path.insert(0, node.text)  # Notice, if errors occur here then !parent
+        if text:
+            path = [self.text]
+            while hasattr(node, "degree"):
+                path.insert(0, node.text)
+                node = node.parent
+            path.insert(0, node)  # Notice, if errors occur here then !parent
+        else:
+            path = [self.this]
+            while hasattr(node, "degree"):
+                path.insert(0, node.this)
+                node = node.parent
+            path.insert(0, node)  # Notice, if errors occur here then !parent            
         return tuple(path)
 
     def update_freq(self, value):
