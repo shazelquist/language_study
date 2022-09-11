@@ -19,5 +19,6 @@ The model can then be queried to provide options for the continuation of a sente
  2. Install python dependacies
  3. Set environment variable(s) ``DB_URI=sqlite:///localpath_to_your_db`` (export/set depending on your os)
  4. Instantiate the database ``$ ./dbsuite.py erase_db``
- 5. Start loading in some sample data ``$ ./db_suite.py push_book "title of novel in your books directory"``
- 6. Follow directions to load information in and mess around with queries. 
+ 5. Find a sample book to use and clean it. ``$ ./db_suite.py clean_book "title of novel in your books directory"``
+ 6. Start loading in some sample data ``$ ./db_suite.py push_book "title of novel in your books directory"``
+ 7. Follow directions to load information in and mess around with queries. 
